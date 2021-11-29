@@ -12,7 +12,7 @@ sub run {
 
     $self->select_serial_terminal;
 
-    record_info('Dummy module')
+    record_info('Dummy module');
 
 }
 
