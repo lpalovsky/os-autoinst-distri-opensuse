@@ -1,4 +1,4 @@
-package hanasr_fencing;
+package hana_sr_test_sequences;
 use strict;
 use warnings FATAL => 'all';
 use Mojo::Base 'publiccloud::basetest';

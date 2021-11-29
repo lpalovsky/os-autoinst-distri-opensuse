@@ -1,4 +1,4 @@
-package hanasr_destroy;
+package hana_sr_cleanup;
 use strict;
 use warnings FATAL => 'all';
 use Mojo::Base 'publiccloud::basetest';
