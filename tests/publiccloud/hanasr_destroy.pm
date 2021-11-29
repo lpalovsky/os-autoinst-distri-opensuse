@@ -6,7 +6,6 @@ use testapi;
 
 sub run {
     my ($self) = @_;
-    my
 }
 
 1;
