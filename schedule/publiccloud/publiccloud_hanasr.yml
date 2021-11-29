@@ -9,3 +9,5 @@ description: |
 schedule:
   - boot/boot_to_desktop
   - publiccloud/hanasr_deploy
+  - publiccloud/hanasr_fencing
+  - publiccloud/hanasr_destroy

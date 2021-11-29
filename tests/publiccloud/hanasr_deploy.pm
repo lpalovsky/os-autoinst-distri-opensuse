@@ -111,16 +111,17 @@ sub run {
 
     $self->select_serial_terminal;
 
-    my $provider = $self->provider_factory();
-    my @instances = $provider->create_instances(check_connectivity => 1);
-
-    set_var('PROVIDER', $provider);
-    set_var('INSTANCES', @instances);
+    set_var('PROVIDER', 'azure');
+    set_var('INSTANCES', 'all instances test');
 
     record_info(get_var('PROVIDER'));
     record_info(get_var('INSTANCES'));
 
     return;
+
+    my $provider = $self->provider_factory();
+    my @instances = $provider->create_instances(check_connectivity => 1);
+
     # Upload all TF/SALT logs first!
     foreach my $instance (@instances) {
         $self->upload_ha_sap_logs($instance);
