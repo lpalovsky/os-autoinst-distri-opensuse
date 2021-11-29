@@ -6,6 +6,10 @@ use testapi;
 
 sub run {
     my ($self) = @_;
+    my $provider = get_required_var('PROVIDER');
+    my $instances = get_required_var('INSTANCES');
+    record_info("Provider = $provider");
+    record_info("Instances = $instances");
 }
 
 1;
