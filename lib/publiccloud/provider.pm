@@ -367,7 +367,7 @@ sub terraform_apply {
         );
         upload_logs(TERRAFORM_DIR . "/$cloud_name/terraform.tfvars", failok => 1);
 
-        my $resource_group = check_var("WORKSPACE")? get_var("WORKSPACE"): "shapopenqa";
+        my $resource_group = check_var("RESOURCE_GROUP")? get_var("RESOURCE_GROUP"): "shapopenqa";
 
         assert_script_run("terraform workspace new $resource_group -no-color", $terraform_timeout);
     }

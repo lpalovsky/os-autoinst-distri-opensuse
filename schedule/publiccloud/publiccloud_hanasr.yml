@@ -7,7 +7,7 @@ description: |
     - test
     - destroy
 vars:
-  WORKSPACE: hanasr_devel
+  RESOURCE_GROUP: hanasr_devel
 schedule:
   - boot/boot_to_desktop
   - publiccloud/hana_sr_deployment
