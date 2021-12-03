@@ -367,12 +367,7 @@ sub terraform_apply {
         );
         upload_logs(TERRAFORM_DIR . "/$cloud_name/terraform.tfvars", failok => 1);
 
-        if (check_var("WORKSPACE")) {
-            my $resource_group = get_var("WORKSPACE");
-        }
-        else {
-            my $resource_group = "qashapopenqa";
-        }
+        my $resource_group = check_var("WORKSPACE")? get_var("WORKSPACE"): "shapopenqa";
 
         assert_script_run("terraform workspace new $resource_group -no-color", $terraform_timeout);
     }
