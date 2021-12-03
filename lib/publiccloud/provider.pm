@@ -366,7 +366,7 @@ sub terraform_apply {
             q(%SLE_VERSION%) => $sle_version
         );
         upload_logs(TERRAFORM_DIR . "/$cloud_name/terraform.tfvars", failok => 1);
-        assert_script_run('terraform workspace new qashapopenqa -no-color', $terraform_timeout);
+        assert_script_run('terraform workspace new hanasr -no-color', $terraform_timeout);
     }
     else {
         assert_script_run('cd ' . TERRAFORM_DIR);
