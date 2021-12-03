@@ -367,8 +367,8 @@ sub terraform_apply {
         );
         upload_logs(TERRAFORM_DIR . "/$cloud_name/terraform.tfvars", failok => 1);
 
-        if (check_var($WORKSPACE)) {
-            my $resource_group = get_var($WORKSPACE);
+        if (check_var("WORKSPACE")) {
+            my $resource_group = get_var("WORKSPACE");
         }
         else {
             my $resource_group = "qashapopenqa";
