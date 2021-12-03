@@ -41,7 +41,7 @@ sub run{
 
     my $provider = $self->provider_factory();
     record_info("provider = $provider");
-    record_info("RG = $resource_group")
+    record_info("RG = "get_var("RESOURCE_GROUP"));
 }
 
 1;
