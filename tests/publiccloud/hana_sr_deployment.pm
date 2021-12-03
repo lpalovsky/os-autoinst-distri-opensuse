@@ -40,10 +40,8 @@ sub run{
     $self->select_serial_terminal;
 
     my $provider = $self->provider_factory();
-    my @instances = $provider->create_instances(check_connectivity => 1);
-
-    # Upload all TF/SALT logs first!
-    foreach my $instance (@instances) {
-        $self->upload_ha_sap_logs($instance);
-    }
+    record_info("provider = $provider");
+    record_info("RG = $WORKSPACE")
 }
+
+1;
