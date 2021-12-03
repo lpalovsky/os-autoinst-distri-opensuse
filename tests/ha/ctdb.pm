@@ -87,6 +87,11 @@ sub run {
             sleep 60;
             save_state;
 
+            script_run("ctdb_diagnostics >> /root/ctdb_diag.log");
+            upload_logs("/root/ctdb_diag.log");
+
+            script_run("journalctl -xe nmb.service >> /root/journal_nmb.log");
+            upload_logs("/root/journal_nmb.log");
             # Check CTDB status
             assert_script_run "ctdb status";
 
