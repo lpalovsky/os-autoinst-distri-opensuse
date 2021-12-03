@@ -15,23 +15,6 @@ use Mojo::JSON;
 use version_utils 'is_sle';
 use publiccloud::utils;
 
-=head2 upload_ha_sap_logs
-
-    upload_ha_sap_logs($instance):
-
-Upload the HA/SAP logs from instance C<$instance> on the Webui.
-=cut
-sub upload_ha_sap_logs {
-    my ($self, $instance) = @_;
-    my @logfiles = qw(salt-deployment.log salt-os-setup.log salt-pre-deployment.log salt-result.log);
-
-    # Upload logs from public cloud VM
-    $instance->run_ssh_command(cmd => 'sudo chmod o+r /var/log/salt-*');
-    foreach my $file (@logfiles) {
-        $instance->upload_log("/var/log/$file", log_name => "$instance->{instance_id}-$file");
-    }
-}
-
 sub run{
     my ($self) = @_;
     my $timeout = 120;
@@ -40,8 +23,8 @@ sub run{
     $self->select_serial_terminal;
 
     my $provider = $self->provider_factory();
-    record_info("provider = $provider");
-    record_info("RG = "get_var("RESOURCE_GROUP"));
+    my @instances = $provider->create_instances(check_connectivity => 1);
+    record_info(join(', ', @instances));
 }
 
 1;
