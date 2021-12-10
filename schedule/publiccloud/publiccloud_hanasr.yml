@@ -1,0 +1,14 @@
+---
+name: publiccloud_hanasr
+description: |
+  Run HANASR tests on public cloud instances using ha-sap-terraform-deployments tool:
+    - TODO: write a proper description
+    - deploy
+    - test
+    - destroy
+vars:
+  PUBLIC_CLOUD_RESOURCE_GROUP: 'hanasr-perfopt_lpalovsky'
+schedule:
+  - boot/boot_to_desktop
+  - publiccloud/hana_sr_deployment
+  - publiccloud/hana_sr_test_sequences
