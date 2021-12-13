@@ -10,5 +10,4 @@ vars:
   PUBLIC_CLOUD_RESOURCE_GROUP: 'hanasr-perfopt-lpalovsky'
 schedule:
   - boot/boot_to_desktop
-  - publiccloud/hana_sr_deployment
-  - publiccloud/hana_sr_test_sequences
+  - publiccloud/hana_sr_IPA
