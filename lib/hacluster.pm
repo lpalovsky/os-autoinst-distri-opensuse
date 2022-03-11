@@ -634,7 +634,7 @@ sub check_cluster_state {
     my $cmd = (defined $args{proceed_on_failure} && $args{proceed_on_failure} == 1) ? \&script_run : \&assert_script_run;
 
     $cmd->("$crm_mon_cmd");
-    $cmd->("$crm_mon_cmd | grep -i 'no inactive resources'") if is_sle '12-sp3+';
+    $cmd->("grep -iq 'no inactive resources' <($crm_mon_cmd)") if is_sle '12-sp3+';
     $cmd->('crm_mon -1 | grep \'partition with quorum\'');
     # In older versions, node names in crm node list output are followed by ": normal". In newer ones by ": member"
     $cmd->(q/crm_mon -s | grep "$(crm node list | egrep -c ': member|: normal') nodes online"/);
