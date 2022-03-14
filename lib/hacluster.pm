@@ -88,7 +88,7 @@ Extension (HA or HAE) tests.
 our $crm_mon_cmd = 'crm_mon -R -r -n -N -1';
 our $softdog_timeout = bmwqemu::scale_timeout(60);
 our $prev_console;
-our $join_timeout = bmwqemu::scale_timeout(60);
+our $join_timeout = bmwqemu::scale_timeout(90);
 our $default_timeout = bmwqemu::scale_timeout(30);
 
 # Private functions
