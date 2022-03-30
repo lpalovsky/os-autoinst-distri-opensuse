@@ -71,7 +71,7 @@ sub run {
             sleep 4;
         }
 
-        if ($node_was_fenced == 0 && $check = "kill-pacemakerd") {
+        if ($node_was_fenced == 0 && $check eq "kill-pacemakerd") {
             record_info('INFO', "Executing '$cmd' did not trigger fencing (expected behavior).");
         }
         elsif ($node_was_fenced == 1) {
