@@ -48,7 +48,7 @@ sub run {
 
     # Loop on each check
     foreach my $check (@checks) {
-        # reset fencing status
+        # reset fencing status form previous loop
         my $node_was_fenced = 0;
         # Execute the command
         my $cmd = "crm cluster crash_test --${check} --force";
