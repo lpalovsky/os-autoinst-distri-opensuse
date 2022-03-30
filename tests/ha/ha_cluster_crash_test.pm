@@ -33,7 +33,6 @@ sub upload_crash_test_logs {
 sub run {
     my ($self) = @_;
     my $cluster_name = get_cluster_name;
-    my $node_was_fenced = 0;
 
     # Ensure that the cluster state is correct before executing the checks
     $self->select_serial_terminal;
@@ -49,13 +48,16 @@ sub run {
 
     # Loop on each check
     foreach my $check (@checks) {
+        # reset fencing status
+        my $node_was_fenced = 0;
         # Execute the command
         my $cmd = "crm cluster crash_test --${check} --force";
         record_info("${check}", "Executing ${cmd}");
         my $cmd_fails = script_run "${cmd}";
         #record_info('ERROR', "Failure while executing '$cmd'", result => 'fail') unless (defined $cmd_fails and $cmd_fails == 0);
 
-        # All the commands leads to a reboot of the node
+        # Killing pacemaker should result in service restart
+        # All remaining commands lead to a reboot of the node
         my $loop_count = bmwqemu::scale_timeout(15);    # Wait 1 minute (15*4) maximum, can be scaled with SCALE_TIMEOUT
         while (1) {
             last if ($loop_count-- <= 0);
@@ -68,12 +70,23 @@ sub run {
             }
             sleep 4;
         }
-        if ($node_was_fenced == 1) {
-            record_info('WARNING', "The node was fenced while executing '$cmd'");
+
+        if ($node_was_fenced == 0 && $check = "kill-pacemakerd") {
+            record_info('INFO', "Executing '$cmd' did not trigger fencing (expected behavior).");
+        }
+        elsif ($node_was_fenced == 1) {
+            if ($check = "kill-pacemakerd") {
+                record_info('ERROR', "Failure while executing '$cmd'. Killing pacemaker should not trigger fencing", result => 'fail');
+            }
+            else {
+                record_info('WARNING', "The node was fenced while executing '$cmd'");
+            }
+
             # Wait for fencing delay and resources to start
             sleep $fencing_start_delay;
             wait_until_resources_started();
-        } else {
+        }
+        else {
             record_info('ERROR', "Failure while executing '$cmd'", result => 'fail') unless (defined $cmd_fails and $cmd_fails == 0);
         }
     }
