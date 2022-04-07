@@ -168,7 +168,7 @@ sub run {
                 }
 
                 # Migrate resource on the node
-                assert_script_run "crm resource migrate ms_$resource $node", $default_timeout;
+                assert_script_run "crm resource move ms_$resource $node", $default_timeout;
                 ensure_resource_running("$fs_rsc", "is running on:[[:blank:]]*$node\[[:blank:]]*\$");
 
                 # Do a check of the cluster with a screenshot
