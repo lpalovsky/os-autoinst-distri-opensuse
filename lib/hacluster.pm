@@ -621,7 +621,7 @@ sub ha_export_logs {
 Check state of the cluster. This will call B<$crm_mon_cmd> to check the current
 status of the cluster, check for inactive resources and for S<partition with quorum>
 in the output of B<$crm_mon_cmd>, check the reported number of nodes in the output
-of C<crm node list> and B<$crm_mon_cmd> is the same and run C<crm_verify -LV>.
+of C<crm node show> and B<$crm_mon_cmd> is the same and run C<crm_verify -LV>.
 
 With the named argument B<proceed_on_failure> set to 1, the method will use
 B<script_run()> and attempt to run all commands in SUT without checking for errors.
@@ -638,8 +638,8 @@ sub check_cluster_state {
     $cmd->("$crm_mon_cmd");
     $cmd->("$crm_mon_cmd | grep -i 'no inactive resources'") if is_sle '12-sp3+';
     $cmd->('crm_mon -1 | grep \'partition with quorum\'');
-    # In older versions, node names in crm node list output are followed by ": normal". In newer ones by ": member"
-    $cmd->(q/crm_mon -s | grep "$(crm node list | egrep -c ': member|: normal') nodes online"/);
+    # In older versions, node names in crm node show output are followed by ": normal". In newer ones by ": member"
+    $cmd->(q/crm_mon -s | grep "$(crm node show | egrep -c ': member|: normal') nodes online"/);
     # As some options may be deprecated, test shouldn't die on 'crm_verify'
     if (get_var('HDDVERSION')) {
         script_run 'crm_verify -LV';
