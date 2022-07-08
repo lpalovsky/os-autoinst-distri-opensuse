@@ -54,13 +54,14 @@ sub run {
     }
 
     my @instances = $provider->create_instances(check_connectivity => 1);
+    record_info("instance dump", Dumper(@instances));
     my @instances_export;
 
     # Upload all TF/SALT logs first!
 
     foreach my $instance (@instances) {
-        $self->upload_ha_sap_logs($instance);
         record_info("instance dump", Dumper($instance));
+        $self->upload_ha_sap_logs($instance);
         $self->{my_instance} = $instance;
 
         push(@instances_export, $instance);
