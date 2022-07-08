@@ -66,25 +66,6 @@ sub run {
 
         push(@instances_export, $instance);
 
-        # Get the hostname of the VM, it contains the cluster type
-        my $hostname = $self->run_cmd(cmd => 'uname -n', quiet => 1);
-        foreach my $cluster_type (@cluster_types) {
-            # Some actions are done only on the first node of each cluster
-            if ($hostname =~ m/${cluster_type}01$/) {
-                if ($cluster_type eq 'hana') {
-                    # Before doing anything on the cluster we have to wait for the HANA sync to be done
-                    $self->run_cmd(cmd => 'sh -c \'until SAPHanaSR-showAttr | grep -q SOK; do sleep 1; done\'', timeout => $timeout, quiet => 1);
-                    # Show HANA replication state
-                    $self->run_cmd(cmd => 'SAPHanaSR-showAttr');
-                }
-
-                # Wait for all resources to be up
-                # We need to be sure that the cluster is OK before testing
-                record_info('Cluster type', $cluster_type);
-                $self->wait_until_resources_started(cluster_type => $cluster_type, timeout => $timeout);
-            }
-        }
-
         my $instance_id = $instance->{'instance_id'};
         # Skip instances without HANA db
         next if ($instance_id !~ m/vmhana/);
