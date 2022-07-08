@@ -46,6 +46,7 @@ sub run {
         return;
     }
 
+    record_info("args deploy", Dumper($run_args));
     my $provider = $self->provider_factory();
     record_info("provide dump", Dumper($provider));
     # TODO: DEPLOYMENT SKIP - REMOVE!!!
