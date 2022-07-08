@@ -47,12 +47,12 @@ sub run {
     }
 
     my $provider = $self->provider_factory();
-    record_info("instance dump", Dumper($provider));
+    record_info("provide dump", Dumper($provider));
     # TODO: DEPLOYMENT SKIP - REMOVE!!!
     if (defined($instances_export_path) and length($instances_export_path)) {
         copy_ssh_keys();
     }
-
+    record_info("before create");
     my @instances = $provider->create_instances(check_connectivity => 1);
     record_info("instance dump", Dumper(@instances));
     my @instances_export;
@@ -60,7 +60,7 @@ sub run {
     # Upload all TF/SALT logs first!
 
     foreach my $instance (@instances) {
-        record_info("instance dump", Dumper($instance));
+        record_info("single instance dump", Dumper($instance));
         $self->upload_ha_sap_logs($instance);
         $self->{my_instance} = $instance;
 
