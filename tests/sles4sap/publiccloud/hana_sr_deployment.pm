@@ -28,7 +28,6 @@ sub test_flags {
 sub run {
     my ($self, $run_args) = @_;
     my $timeout = 120;
-    my @cluster_types = split(',', get_required_var('CLUSTER_TYPES'));
     # TODO: DEPLOYMENT SKIP - REMOVE!!!
     my $instances_import_path = get_var("INSTANCES_IMPORT");
     my $instances_export_path = get_var("INSTANCES_EXPORT");
@@ -48,7 +47,7 @@ sub run {
     }
 
     my $provider = $self->provider_factory();
-
+    record_info("instance dump", Dumper($provider));
     # TODO: DEPLOYMENT SKIP - REMOVE!!!
     if (defined($instances_export_path) and length($instances_export_path)) {
         copy_ssh_keys();
