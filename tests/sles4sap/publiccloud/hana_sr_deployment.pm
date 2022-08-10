@@ -17,6 +17,7 @@ use publiccloud::utils;
 use Data::Dumper;
 use Storable;
 
+
 sub test_flags {
     return {
         fatal => 1,
@@ -57,10 +58,10 @@ sub run {
     my @instances = $provider->create_instances(check_connectivity => 1);
     my @instances_export;
 
-    # Upload all TF/SALT logs first!
+    # Upload all TF logs first!
 
     foreach my $instance (@instances) {
-        $self->upload_ha_sap_logs($instance);
+        #$self->upload_ha_sap_logs($instance);
         record_info("instance dump", Dumper($instance));
         $self->{my_instance} = $instance;
 
@@ -156,6 +157,10 @@ sub copy_ssh_keys{
         assert_script_run("curl -f -v " . data_url("sles4sap/$file") . " -o /root/.ssh/$file");
         assert_script_run("chmod 700 /root/.ssh/$file");
     }
+}
+
+sub ansible_deploy{
+
 }
 
 1;

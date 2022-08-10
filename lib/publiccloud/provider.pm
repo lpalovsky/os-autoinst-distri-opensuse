@@ -19,7 +19,8 @@ use Mojo::JSON qw(decode_json encode_json);
 use utils qw(file_content_replace script_retry);
 use mmapi;
 
-use constant TERRAFORM_DIR => '/root/terraform';
+use constant TERRAFORM_DIR => get_var('TERRAFORM_DIR', '/root/terraform');
+use constant DEPLOYMENT_DIR => get_var('DEPLOYMENT_DIR', TERRAFORM_DIR);
 use constant TERRAFORM_TIMEOUT => 30 * 60;
 
 has prefix => 'openqa';
@@ -317,19 +318,31 @@ sub terraform_prepare_env {
     return if $self->terraform_env_prepared;
 
     my $file = lc get_var('PUBLIC_CLOUD_PROVIDER');
-    assert_script_run('mkdir -p ' . TERRAFORM_DIR);
+    assert_script_run('mkdir -p ' . DEPLOYMENT_DIR);
     if (get_var('PUBLIC_CLOUD_SLES4SAP')) {
         my $cloud_name = $self->conv_openqa_tf_name;
         # Disable SSL verification only if explicitly asked!
         assert_script_run('git config --global http.sslVerify false') if get_var('HA_SAP_GIT_NO_VERIFY');
-        assert_script_run('cd ' . TERRAFORM_DIR);
+        assert_script_run('cd ' . DEPLOYMENT_DIR);
         assert_script_run('git clone --depth 1 --branch ' . get_var('HA_SAP_GIT_TAG', 'master') . ' ' . get_required_var('HA_SAP_GIT_REPO') . ' .');
+        if (get_var('QE_SAP_DEPLOYMENT')) {
+            my $yaml_config = DEPLOYMENT_DIR . "/scripts/qesap/hanasr_gcp.yaml";
+            my $pip_cmd = "pip install --no-color --no-cache-dir --progress-bar off ";
+            my $qesap_cmd = DEPLOYMENT_DIR . "/scripts/qesap/qesap.py -c " . $yaml_config . " -b " . DEPLOYMENT_DIR;
+            assert_script_run('curl ' . data_url("sles4sap/qe_sap_deployment/hanasr_gcp.yaml") . ' -o ' . $yaml_config);
+            assert_script_run($pip_cmd . " -r " . DEPLOYMENT_DIR . "/scripts/qesap/requirements-dev.txt");
+            assert_script_run($qesap_cmd . " configure");
+            assert_script_run($pip_cmd . " -r " .DEPLOYMENT_DIR . "/requirements.txt");
+
+        }
+        else {
         # Workaround for https://github.com/SUSE/ha-sap-terraform-deployments/issues/810
         assert_script_run('sed -i "/key_name/s/terraform/&$RANDOM/" aws/infrastructure.tf');
         # By default use the default provided Salt formula packages
         assert_script_run('rm -f requirements.yml') unless get_var('HA_SAP_USE_REQUIREMENTS');
         assert_script_run('cd');    # We need to ensure to be in the home directory
         assert_script_run('curl ' . data_url("publiccloud/terraform/sap/$file.tfvars") . ' -o ' . TERRAFORM_DIR . "/$cloud_name/terraform.tfvars");
+        }
     }
     else {
         $file = get_var('PUBLIC_CLOUD_TERRAFORM_FILE', "publiccloud/terraform/$file.tf");

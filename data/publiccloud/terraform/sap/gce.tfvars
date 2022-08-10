@@ -61,6 +61,7 @@ os_image = "%SLE_IMAGE%"
 # Besides the provisioning, the SSH connection for this keys will be authorized in the created machines
 # These keys are provided using the next two variables in 2 different ways
 # Path to already existing keys
+admin_user = "root"
 public_key  = "~/.ssh/id_rsa.pub"
 private_key = "~/.ssh/id_rsa"
 
