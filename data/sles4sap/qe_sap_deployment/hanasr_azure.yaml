@@ -5,6 +5,8 @@ terraform:
   variables:
     # GENERAL VARIABLES #
     az_region: "%REGION%"
+    #os_image: "%PUBLIC_CLOUD_OS_IMAGE%"
+    hana_major_version: "%HANA_OS_MAJOR_VER%"
     admin_user: "cloudadmin"
     public_key : "~/.ssh/id_rsa.pub"
     private_key: "~/.ssh/id_rsa"
@@ -16,7 +18,7 @@ terraform:
     bastion_enabled: "false"
 
     # HANA
-    hana_cluster_vip: "10.10.1.15"
+    #hana_cluster_vip: "10.10.1.15"
     #hana_ips: ["10.10.1.16", "10.10.1.17"]
     hana_cluster_fencing_mechanism: "%FENCING_MECHANISM%"
 
