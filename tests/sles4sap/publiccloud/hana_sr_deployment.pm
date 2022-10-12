@@ -39,7 +39,7 @@ sub qesap_get_variables {
     $variables{PUBLIC_CLOUD_OS_IMAGE} = get_var("PUBLIC_CLOUD_OS_IMAGE");
     $variables{PUBLIC_CLOUD_RESOURCE_NAME} = get_var("PUBLIC_CLOUD_RESOURCE_NAME");
     $variables{FENCING_MECHANISM} = get_var("FENCING_MECHANISM", "sbd");
-    $variables{HANA_OS_MAJOR_VER} = (split("-", get_var("VERSION")))[0] ;
+    $variables{HANA_OS_MAJOR_VER} = (split("-", get_var("VERSION")))[0];
 
     return (%variables);
 }
@@ -88,7 +88,7 @@ sub run {
 
     # Allows to use previous ha-sap-terraform-deployment
     if (!get_var("HA_SAP_TERRAFORM_DEPLOYMENT")) {
-        die if qesap_execute(cmd => 'ansible', verbose => 1, timeout => 3600) != 0;
+        die if qesap_execute(cmd => 'ansible', verbose=>1 ,timeout => 3600) != 0;
     }
 
     record_info("Teraform Instances:", Dumper(\@instances));

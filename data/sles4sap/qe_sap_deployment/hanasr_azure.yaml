@@ -1,10 +1,10 @@
 provider: 'azure'
-apiver: 1
+apiver: 2
 terraform:
   provider: 'azure'
   variables:
     # GENERAL VARIABLES #
-    az_region: "%REGION%"
+    az_region: "%PUBLIC_CLOUD_REGION%"
     #os_image: "%PUBLIC_CLOUD_OS_IMAGE%"
     hana_major_version: "%HANA_OS_MAJOR_VER%"
     admin_user: "cloudadmin"
@@ -45,3 +45,11 @@ ansible:
     - deregister.yaml
   variables:
     SAPCONF: true
+  hana_vars:
+    sap_hana_install_software_directory: /hana/shared/install
+    sap_hana_install_master_password: 'DoNotUseThisPassw0rd'
+    sap_hana_install_sid: 'HDB'
+    sap_hana_install_instance_number: '00'
+    sap_domain: "qe-test.example.com"
+    primary_site: 'goofy'
+    secondary_site: 'miky'
