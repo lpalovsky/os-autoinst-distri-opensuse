@@ -17,7 +17,7 @@ sub cleanup {
     return if ($self->{cleanup_called});
     $self->{cleanup_called} = 1;
     my $inventory_check_cmd = join(" ", ("test", "-f", qesap_get_inventory()));
-    if (script_run($inventory_check_cmd) == 0){
+    if (script_run($inventory_check_cmd) == 0) {
         record_info("Ansible cleanup");
         my $ansible_cleanup_rc = qesap_execute(verbose => "--verbose", cmd => "ansible", cmd_options => "-d", timeout => 1200);
         record_soft_failure("Ansible destroy failed.") if $ansible_cleanup_rc != 0;
@@ -31,7 +31,7 @@ sub cleanup {
 
 sub post_fail_hook {
     my ($self,) = @_;
-    if (get_var("PUBLIC_CLOUD_NO_CLEANUP_ON_FAILURE")){
+    if (get_var("PUBLIC_CLOUD_NO_CLEANUP_ON_FAILURE")) {
         diag("Skip post fail", "Variable 'PUBLIC_CLOUD_NO_CLEANUP_ON_FAILURE' defined.");
         return;
     }
@@ -40,7 +40,7 @@ sub post_fail_hook {
 
 sub post_run_hook {
     my ($self) = @_;
-    if ($self->test_flags()->{publiccloud_multi_module} or get_var("PUBLIC_CLOUD_NO_CLEANUP")){
+    if ($self->test_flags()->{publiccloud_multi_module} or get_var("PUBLIC_CLOUD_NO_CLEANUP")) {
         diag("Skip post run", "Skipping post run hook. \n Variable 'PUBLIC_CLOUD_NO_CLEANUP' defined or test_flag 'publiccloud_multi_module' active");
         return;
     }

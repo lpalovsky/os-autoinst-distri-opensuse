@@ -18,6 +18,7 @@ use testapi;
 use List::MoreUtils qw(uniq);
 use utils 'file_content_replace';
 use Data::Dumper;
+use Carp qw(croak);
 
 our @EXPORT = qw(
   run_cmd
