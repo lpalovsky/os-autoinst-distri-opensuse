@@ -104,7 +104,8 @@ sub run {
     set_default_values();
     my $ansible_playbooks = create_playbook_section();
     my $ansible_hana_vars = create_hana_vars_section();
-
+    if ($ansible_hana_vars){record_info("HANA vars ok")};
+    return;
     # Prepare QESAP deplyoment
     qesap_prepare_env(openqa_variables=>qesap_get_variables(), provider => lc(get_required_var('PUBLIC_CLOUD_PROVIDER')));
     qesap_create_ansible_section(ansible_section=>'create', section_content=>$ansible_playbooks) if @$ansible_playbooks;

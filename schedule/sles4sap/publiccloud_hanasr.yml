@@ -11,7 +11,9 @@ vars:
   TEST_CONTEXT: 'OpenQA::Test::RunArgs'
 schedule:
   - boot/boot_to_desktop
-  - sles4sap/publiccloud/qesap_terraform
-  #- sles4sap/publiccloud/hana_sr_dummy
-  - sles4sap/publiccloud/qesap_ansible
-  - sles4sap/publiccloud/qesap_cleanup
+  - sles4sap/publiccloud/hana_sr_deployment
+  #- sles4sap/publiccloud/qesap_terraform
+  #- sles4sap/publiccloud/qesap_ansible
+  - sles4sap/publiccloud/hana_sr_schedule_primary_tests
+  - sles4sap/publiccloud/hana_sr_schedule_replica_tests
+  - sles4sap/publiccloud/hana_sr_schedule_cleanup

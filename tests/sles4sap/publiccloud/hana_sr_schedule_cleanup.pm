@@ -12,7 +12,7 @@ sub test_flags {
 sub run {
     my ($self, $run_args) = @_;
     record_info("Schedule", "Schedule cleanup job");
-    loadtest('sles4sap/publiccloud/hana_sr_destroy_all', name => "Cleanup resources", run_args => $run_args, @_);
+    loadtest('sles4sap/publiccloud/qesap_cleanup', name => "Cleanup resources", run_args => $run_args, @_);
 }
 
 1;

@@ -28,4 +28,3 @@ ansible:
     - "%HANA_SAPCAR%"
   destroy:
     - deregister.yaml
-
