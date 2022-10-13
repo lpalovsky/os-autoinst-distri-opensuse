@@ -72,6 +72,7 @@ sub qesap_get_file_paths {
     $paths{deployment_dir} = get_var('QESAP_DEPLOYMENT_DIR', get_var('DEPLOYMENT_DIR', '/root/qe-sap-deployment'));
     $paths{terraform_dir} = get_var('PUBLIC_CLOUD_TERRAFORM_DIR', $paths{deployment_dir} . '/terraform');
     $paths{qesap_conf_trgt} = $paths{deployment_dir} . "/scripts/qesap/" . $paths{qesap_conf_filename};
+    $paths{qesap_conf_src} = data_url("sles4sap/qe_sap_deployment/" . $paths{qesap_conf_filename});
     return (%paths);
 }
 
@@ -83,6 +84,24 @@ sub qesap_get_file_paths {
 sub qesap_create_folder_tree {
     my %paths = qesap_get_file_paths();
     assert_script_run("mkdir -p $paths{deployment_dir}", quiet => 1);
+}
+
+=head3 qesap_get_variables
+
+    Scans yaml config for '%OPENQA_VARIABLE%' placeholders and searches for values in OpenQA defined variables.
+    Returns hash with openqa variable key/value pairs.
+=cut
+sub qesap_get_variables {
+    my %paths = qesap_get_file_paths();
+    my $yaml_file = $paths{'qesap_conf_src'};
+    my %variables;
+    my $grep_cmd = "grep -v '#' | grep -oE %[A-Z0-9_]*% | sed s/%//g";
+    my $cmd = join(" ", "curl -s -L", $yaml_file, "|", $grep_cmd);
+
+    for my $variable (split(" ",script_output($cmd))) {
+        $variables{$variable} = get_required_var($variable);
+    }
+    return \%variables;
 }
 
 =head3 qesap_pip_install
@@ -279,7 +298,8 @@ sub qesap_prepare_env {
     }
 
     record_info("QESAP yaml", "Preparing yaml config file");
-    assert_script_run('curl -v -L ' . data_url($qesap_conf_src) . ' -o ' . $paths{qesap_conf_trgt});
+    assert_script_run('curl -v -L ' . $paths{qesap_conf_src} . ' -o ' . $paths{qesap_conf_trgt});
+
     qesap_yaml_replace(openqa_variables => $variables);
     push(@log_files, $paths{qesap_conf_trgt});
 

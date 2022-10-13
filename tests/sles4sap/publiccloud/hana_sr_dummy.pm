@@ -11,11 +11,9 @@ sub test_flags {
 
 sub run {
     my ($self, $run_args) = @_;
-    $self->{instances} = $run_args->{instances};
-    $self->{my_instance} = $run_args->{site_a};
     $self->select_serial_terminal;
     record_info("Dummy", "module for farts and giggles.");
-    $self->setup_sbd_delay("30s");
+
 }
 
 1;
