@@ -21,6 +21,7 @@ terraform:
     #hana_cluster_vip: "10.10.1.15"
     #hana_ips: ["10.10.1.16", "10.10.1.17"]
     hana_cluster_fencing_mechanism: "%FENCING_MECHANISM%"
+    hana_count: 1
 
     # SBD
     #iscsi_srv_uri: "https://%STORAGE_ACCOUNT_NAME%.blob.core.windows.net/sle-images/%SLE_IMAGE%"

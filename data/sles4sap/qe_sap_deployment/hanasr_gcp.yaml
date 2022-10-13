@@ -19,8 +19,8 @@ terraform:
 
     # HANA
     machine_type: "%MACHINE_TYPE%"
-    hana_data_disk_size : "1" # 896GB
-    hana_backup_disk_size: "1" # 128GB
+    #hana_data_disk_size : "1" # 896GB
+    #hana_backup_disk_size: "1" # 128GB
     hana_cluster_vip_mechanism: "route"
     hana_cluster_fencing_mechanism: "%FENCING_MECHANISM%"
     hana_ips: ["10.0.0.2", "10.0.0.3"]
