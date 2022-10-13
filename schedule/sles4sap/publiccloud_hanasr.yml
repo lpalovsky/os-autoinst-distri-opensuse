@@ -13,5 +13,5 @@ schedule:
   - boot/boot_to_desktop
   - sles4sap/publiccloud/hana_sr_terraform
   - sles4sap/publiccloud/hana_sr_dummy
-  - sles4sap/publiccloud/hana_sr_terraform
+  - sles4sap/publiccloud/hana_sr_ansible
   - sles4sap/publiccloud/hana_sr_schedule_cleanup
