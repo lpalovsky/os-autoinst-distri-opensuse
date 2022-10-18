@@ -30,9 +30,11 @@ package qesapdeployment;
 use strict;
 use warnings;
 use Carp qw(croak);
+use YAML::PP;
 use utils 'file_content_replace';
 use testapi;
 use Exporter 'import';
+use Data::Dumper;
 
 
 my @log_files = ();
@@ -49,10 +51,12 @@ our @EXPORT = qw(
   qesap_upload_logs
   qesap_get_deployment_code
   qesap_get_inventory
+  qesap_get_variables
   qesap_prepare_env
   qesap_execute
   qesap_yaml_replace
   qesap_ansible_cmd
+  qesap_create_ansible_section
 );
 
 =head1 DESCRIPTION
@@ -72,6 +76,7 @@ sub qesap_get_file_paths {
     $paths{deployment_dir} = get_var('QESAP_DEPLOYMENT_DIR', get_var('DEPLOYMENT_DIR', '/root/qe-sap-deployment'));
     $paths{terraform_dir} = get_var('PUBLIC_CLOUD_TERRAFORM_DIR', $paths{deployment_dir} . '/terraform');
     $paths{qesap_conf_trgt} = $paths{deployment_dir} . "/scripts/qesap/" . $paths{qesap_conf_filename};
+    $paths{qesap_conf_src} = data_url("sles4sap/qe_sap_deployment/" . $paths{qesap_conf_filename});
     return (%paths);
 }
 
@@ -83,6 +88,52 @@ sub qesap_get_file_paths {
 sub qesap_create_folder_tree {
     my %paths = qesap_get_file_paths();
     assert_script_run("mkdir -p $paths{deployment_dir}", quiet => 1);
+}
+
+=head3 qesap_get_variables
+
+    Scans yaml config for '%OPENQA_VARIABLE%' placeholders and searches for values in OpenQA defined variables.
+    Returns hash with openqa variable key/value pairs.
+=cut
+sub qesap_get_variables {
+    my %paths = qesap_get_file_paths();
+    my $yaml_file = $paths{'qesap_conf_src'};
+    my %variables;
+    my $grep_cmd = "grep -v '#' | grep -oE %[A-Z0-9_]*% | sed s/%//g";
+    my $cmd = join(" ", "curl -s -L", $yaml_file, "|", $grep_cmd);
+
+    for my $variable (split(" ",script_output($cmd))) {
+        $variables{$variable} = get_required_var($variable);
+    }
+    return \%variables;
+}
+
+=head3 qesap_define_playbooks
+
+    Writes "ansible:create" section into yaml config file.
+    As an input it uses list of playbook names.
+
+=cut
+sub qesap_create_ansible_section {
+    my (%args) = @_;
+    my $ypp = YAML::PP->new;
+    my $section = $args{ansible_section};
+    my $content = $args{section_content};
+    my %paths = qesap_get_file_paths();
+    my $yaml_config_path = $paths{qesap_conf_trgt};
+    die("Yaml config file '$yaml_config_path' does not exist.") if assert_script_run("test $yaml_config_path") == 1;
+    my $raw_file = script_output("cat $yaml_config_path");
+    my $yaml_data = $ypp->load_string($raw_file);
+
+    $yaml_data->{ansible}{$section} = $content;
+
+    # write into file
+    my $yaml_dumped = $ypp->dump_string($yaml_data);
+    save_tmp_file($paths{qesap_conf_filename}, $yaml_dumped);
+    assert_script_run('curl -v -L ' . autoinst_url . "/files/" . $paths{qesap_conf_filename} . ' -o ' . $paths{qesap_conf_trgt});
+    record_info("Cat yaml", script_output("cat $yaml_config_path"));
+    record_info("Dump data", Dumper($content));
+    return;
 }
 
 =head3 qesap_pip_install
@@ -265,24 +316,27 @@ sub qesap_prepare_env {
     my $provider = $args{provider};
     my %paths = qesap_get_file_paths();
     my $tfvars_template = get_var('QESAP_TFVARS_TEMPLATE');
-    my $qesap_conf_src = "sles4sap/qe_sap_deployment/" . $paths{qesap_conf_filename};
 
-    qesap_create_folder_tree();
-    qesap_get_deployment_code();
-    qesap_pip_install();
+    # Opetion to skip straight to configuration
+    unless ($args{only_configure}){
+        qesap_create_folder_tree();
+        qesap_get_deployment_code();
+        qesap_pip_install();
 
-    # Copy tfvars template file if defined in parameters
-    if (get_var('QESAP_TFVARS_TEMPLATE')) {
-        record_info("QESAP tfvars template", "Preparing terraform template: \n" . $tfvars_template);
-        assert_script_run('cd ' . $paths{terraform_dir} . '/' . $provider, quiet => 1);
-        assert_script_run('cp ' . $tfvars_template . ' terraform.tfvars.template');
+        # Copy tfvars template file if defined in parameters
+        if (get_var('QESAP_TFVARS_TEMPLATE')) {
+            record_info("QESAP tfvars template", "Preparing terraform template: \n" . $tfvars_template);
+            assert_script_run('cd ' . $paths{terraform_dir} . '/' . $provider, quiet => 1);
+            assert_script_run('cp ' . $tfvars_template . ' terraform.tfvars.template');
+        }
+
+        record_info("QESAP yaml", "Preparing yaml config file");
+        assert_script_run('curl -v -L ' . $paths{qesap_conf_src} . ' -o ' . $paths{qesap_conf_trgt});
     }
 
-    record_info("QESAP yaml", "Preparing yaml config file");
-    assert_script_run('curl -v -L ' . data_url($qesap_conf_src) . ' -o ' . $paths{qesap_conf_trgt});
+
     qesap_yaml_replace(openqa_variables => $variables);
     push(@log_files, $paths{qesap_conf_trgt});
-
     record_info("QESAP conf", "Generating all terraform and Ansible configuration files");
     push(@log_files, "$paths{terraform_dir}/$provider/terraform.tfvars");
     push(@log_files, "$paths{deployment_dir}/ansible/playbooks/vars/hana_media.yaml");
@@ -290,7 +344,7 @@ sub qesap_prepare_env {
     my $exec_rc = qesap_execute(cmd => 'configure', verbose => 1);
     push(@log_files, $hana_vars) if (script_run("test -e $hana_vars") == 0);
     qesap_upload_logs();
-    die if $exec_rc != 0;
+    die if $exec_rc > 0;
     return;
 }
 
