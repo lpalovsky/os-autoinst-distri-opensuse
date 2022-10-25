@@ -387,7 +387,7 @@ sub get_promoted_instance {
 =cut
 sub wait_for_sync {
     my ($self, %args) = @_;
-    my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
+    my $timeout = bmwqemu::scale_timeout($args{timeout} // 900);
     my $sok = 0;
     record_info("Sync wait", "Waiting for data sync between nodes");
 
@@ -405,7 +405,7 @@ sub wait_for_sync {
 
         if (time - $start_time > $timeout) {
             record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
-            record_info("Sync FAIL", "Host replication status: " . run_cmd(cmd => 'SAPHanaSR-showAttr'));
+            record_info("Sync FAIL", "Host replication status: " . $self->run_cmd(cmd => 'SAPHanaSR-showAttr'));
             die("Replication SYNC did not finish within defined timeout. ($timeout sec).");
         }
         sleep 30;
