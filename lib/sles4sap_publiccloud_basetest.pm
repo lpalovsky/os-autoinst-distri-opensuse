@@ -1,6 +1,6 @@
 package sles4sap_publiccloud_basetest;
 
-use base 'publiccloud::basetest';
+use Mojo::Base 'publiccloud::basetest';
 use strict;
 use warnings FATAL => 'all';
 use Exporter 'import';

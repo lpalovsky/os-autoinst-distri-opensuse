@@ -3,6 +3,7 @@ use base 'sles4sap_publiccloud_basetest';
 use strict;
 use warnings FATAL => 'all';
 use testapi;
+use sles4sap_publiccloud;
 use Data::Dumper;
 
 sub test_flags {
