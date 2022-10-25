@@ -30,7 +30,7 @@ sub test_flags {
 sub qesap_get_variables {
     my %variables;
     $variables{HANA_SAR} = get_required_var("HANA_SAR");
-    $variables{REGION} = get_required_var("PUBLIC_CLOUD_REGION");
+    $variables{PUBLIC_CLOUD_REGION} = get_required_var("PUBLIC_CLOUD_REGION");
     $variables{HANA_CLIENT_SAR} = get_required_var("HANA_CLIENT_SAR");
     $variables{HANA_SAPCAR} = get_required_var("HANA_SAPCAR");
     $variables{SCC_REGCODE_SLES4SAP} = get_required_var("SCC_REGCODE_SLES4SAP");
