@@ -5,8 +5,9 @@
 #
 # Summary: Library used for SLES4SAP publicccloud deployment and tests
 
-use base 'publiccloud::basetest';
 package sles4sap_publiccloud_lib;
+
+use base 'publiccloud::basetest';
 use strict;
 use warnings FATAL => 'all';
 use testapi;

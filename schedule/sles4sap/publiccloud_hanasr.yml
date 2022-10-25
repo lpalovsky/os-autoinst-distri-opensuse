@@ -1,7 +1,8 @@
 ---
 name: publiccloud_hanasr
 description: |
-  Run HANASR tests on public cloud instances using qe-sap-deployment project:
+  Run HANASR tests on public cloud instances using ha-sap-terraform-deployments tool:
+    - TODO: write a proper description
     - deploy
     - test
     - destroy
@@ -14,4 +15,4 @@ schedule:
   - sles4sap/publiccloud/qesap_ansible
   - sles4sap/publiccloud/hana_sr_schedule_primary_tests
   - sles4sap/publiccloud/hana_sr_schedule_replica_tests
-  - sles4sap/publiccloud/qesap_cleanup
+  - sles4sap/publiccloud/hana_sr_schedule_cleanup
