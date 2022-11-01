@@ -6,6 +6,7 @@ use testapi;
 use publiccloud::utils;
 use sles4sap_publiccloud;
 use Data::Dumper;
+use serial_terminal 'select_serial_terminal';
 
 sub test_flags {
     return {fatal => 1, publiccloud_multi_module => 1};
@@ -13,7 +14,7 @@ sub test_flags {
 
 sub run {
     my ($self, $run_args) = @_;
-    $self->select_serial_terminal;
+    select_serial_terminal;
     $self->{instances} = $run_args->{instances};
     my $test_name = $self->{name};
     my $takeover_action = $run_args->{hana_test_definitions}{$test_name}{action};

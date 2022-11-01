@@ -11,13 +11,14 @@ use warnings FATAL => 'all';
 use sles4sap_publiccloud;
 use testapi;
 use Data::Dumper;
+use serial_terminal 'select_serial_terminal';
 
 sub run {
     my ($self, $run_args) = @_;
     $self->{instances} = $run_args->{instances};
     my $hana_start_timeout = bmwqemu::scale_timeout(600);
     my $site_b = $run_args->{site_b};
-    $self->select_serial_terminal;
+    select_serial_terminal;
 
     # Switch to control Site B (currently replica mode)
     $self->{my_instance} = $site_b;

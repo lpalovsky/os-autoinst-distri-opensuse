@@ -51,7 +51,7 @@ sub run {
     my $instances_export_path = get_var("INSTANCES_EXPORT") // undef;
     my %variables = qesap_get_variables();
 
-    $self->select_serial_terminal;
+    select_serial_terminal;
 
     # TODO: DEPLOYMENT SKIP - REMOVE!!!
     # Do not cleanup if deployment skip
