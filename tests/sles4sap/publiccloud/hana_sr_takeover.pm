@@ -27,7 +27,6 @@ sub run {
     # Check initial cluster status
     my $cluster_status = $self->run_cmd(cmd => "crm status");
     record_info("Cluster status", $cluster_status);
-    # Check initial state: 'site A' = primary mode
     die(uc($site_name) . " '$target_site->{instance_id}' is NOT in MASTER mode.") if
       $self->get_promoted_hostname() ne $target_site->{instance_id};
     record_info(ucfirst($takeover_action) . " DB",

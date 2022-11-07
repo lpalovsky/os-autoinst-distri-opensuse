@@ -7,21 +7,23 @@
 
 package sles4sap_publiccloud;
 
-use parent 'Exporter';
+use base 'publiccloud::basetest';
 use strict;
 use warnings FATAL => 'all';
-use Mojo::Base 'publiccloud::basetest';
+use Exporter 'import';
 use version_utils 'is_sle';
 use publiccloud::utils;
-use publiccloud::instance;
+use publiccloud::provider;
 use testapi;
+use List::MoreUtils qw(uniq);
+use utils 'file_content_replace';
 use Data::Dumper;
+use Carp qw(croak);
 use hacluster '$crm_mon_cmd';
 
 our @EXPORT = qw(
     run_cmd
     wait_until_resources_started
-    upload_ha_sap_logs
     get_promoted_hostname
     is_hana_resource_running
     stop_hana
@@ -34,6 +36,9 @@ our @EXPORT = qw(
     cleanup_resource
     get_promoted_instance
     wait_for_sync
+    wait_for_pacemaker
+    cloud_file_content_replace
+    setup_sbd_delay
 );
 
 =head2 run_cmd
@@ -65,8 +70,6 @@ sub run_cmd {
     return $out;
 }
 
-<<<<<<< HEAD
-=======
 =head2 wait_until_resources_started
 
     wait_until_resources_started( [ timeout => $timeout ] );
@@ -77,6 +80,7 @@ for each command. Timeout must be specified by the named argument B<timeout> (de
 to 120 seconds). This timeout is scaled by the factor specified in the B<TIMEOUT_SCALE>
 setting. Croaks on timeout.
 =cut
+
 sub wait_until_resources_started {
     my ($self, %args) = @_;
     my @cmds = ('crm cluster wait_for_startup');
@@ -114,31 +118,11 @@ sub wait_until_resources_started {
     }
 }
 
-=head2 upload_ha_sap_logs
-
-    upload_ha_sap_logs($instance):
-
-Upload the HA/SAP logs from instance C<$instance> on the Webui.
-=cut
-sub upload_ha_sap_logs {
-    my ($self, $instance) = @_;
-    my @logfiles = qw(salt-deployment.log salt-os-setup.log salt-pre-deployment.log salt-result.log);
-
-    # Upload logs from public cloud VM
-    $instance->run_ssh_command(cmd => 'sudo chmod o+r /var/log/salt-*');
-    foreach my $file (@logfiles) {
-        $instance->upload_log("/var/log/$file", log_name => "$instance->{instance_id}-$file");
-    }
-}
-
-
->>>>>>> b516ecebd (HanaSR cloud library)
 =head2 get_promoted_hostname()
     get_promoted_hostname();
 
 Checks and returns hostname of HANA promoted node.
 =cut
-<<<<<<< HEAD
 
 sub get_promoted_hostname {
     my ($self) = @_;
@@ -152,14 +136,6 @@ sub get_promoted_hostname {
     record_info("crm out", $resource_output);
     my @master = $resource_output =~ /:\s(\S+)\sMaster/g;
     if (scalar @master != 1) {
-=======
-sub get_promoted_hostname {
-    my ($self) = @_;
-    my $resource_output = $self->run_cmd(cmd => "crm resource status msl_SAPHana_PRD_HDB00", quiet => 1);
-    record_info("crm out", $resource_output);
-    my @master = $resource_output =~ /:\s(\S+)\sMaster/g;
-    if ( scalar @master != 1 ) {
->>>>>>> b516ecebd (HanaSR cloud library)
         diag("Master database not found or command returned abnormal output.\n
         Check 'crm resource status' command output below:\n");
         diag($resource_output);
@@ -169,296 +145,6 @@ sub get_promoted_hostname {
     return join("", @master);
 }
 
-<<<<<<< HEAD
-=======
-=head2 parse_showattr
-    parse_showattr([hostname => $hostname]);
-    Parses  command output, returns list of hashes containing values for each host.
-    If hostname defined, returns hash with values only for host specified.
-=cut
-sub get_hana_topology {
-    my ($self, %args) = @_;
-    my $hostname = $args{hostname};
-    my @topology;
-    my $cmd = "SAPHanaSR-showAttr | sed -E 's/\\s+/ /g' |grep -E '^(\\S+\\s){13}'";
-    $cmd = $self->run_cmd(cmd => $cmd, quiet => 1);
-    my @cmd_output = split(/\n/, $cmd);
-    my @keys = split(/\s/, $cmd_output[0]);
-    shift @cmd_output;
-
-    while (my $entry = shift(@cmd_output)){
-        my %host_entry;
-        my @host_values = split(/\s/, $entry);
-        @host_entry{@keys} = @host_values;
-        next if (defined($hostname) && $host_entry{Hosts} ne $hostname);
-        return \%host_entry if (defined($hostname) && $host_entry{Hosts} eq $hostname);
-        push(@topology, \%host_entry);
-    }
-    return \@topology;
-}
-
-=head2 is_hana_online
-    is_hana_online([timeout => 120, wait_for_start => 'false']);
-
-Check if hana DB is online. Define 'wait_for_start' to wait for DB to start.
-=cut
-sub is_hana_online {
-    my ($self, %args) = @_;
-    my $wait_for_start = defined($args{wait_for_start}) ? 1 : 0;
-    my $timeout = bmwqemu::scale_timeout($args{timeout} // 120);
-    my $start_time = time;
-    my $db_status = 0;
-
-    while ($db_status != 1) {
-        $db_status = 1 if ($self->get_replication_info()->{online} eq "true");
-        last if $wait_for_start == 0;
-        die("DB did not start within defined timeout: $timeout s") if (time - $start_time > $timeout);
-        sleep 30;
-    }
-    return $db_status;
-}
-
-
-=head2 is_hana_resource_running
-    is_hana_resource_running([timeout => 60]);
-
-Checks if resource msl_SAPHana_PRD_HDB00 is running on given node.
-=cut
-sub is_hana_resource_running {
-    my ($self) = @_;
-    my $hostname = $self->{my_instance}->{instance_id};
-
-    my $resource_output = $self->run_cmd(cmd => "crm resource status msl_SAPHana_PRD_HDB00", quiet => 1);
-    my $node_status = grep /is running on: $hostname/, $resource_output;
-    record_info("Node status", "$hostname: $node_status");
-    return $node_status;
-}
-
-=head2 stop_hana
-    stop_hana();
-
-Stops hana database using method specified.
-Default method is 'stop = HDB stop'
-Methods available:
-  stop = HDB stop
-  kill = HDB kill -x
-  crash = proc-systrigger
-
-=cut
-sub stop_hana {
-    my ($self, %args) = @_;
-    my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
-    my $method = defined($args{method}) ? $args{method} : 'stop';
-    my %commands = (
-        "stop"  => "HDB stop",
-        "kill"  => "HDB kill -x",
-        "crash" => "echo c | sudo tee /proc/sysrq-trigger"
-    );
-
-    my $cmd = $commands{$method};
-
-    # wait for data sync before stopping DB
-    $self->wait_for_sync();
-
-    record_info("Stopping HANA", "CMD:$cmd");
-    if ($method eq "crash") {
-        # ServerAliveInterval will terminate command since there will be hanging session after crash
-        $args{ssh_opts} = "ServerAliveInterval=10 ServerAliveCountMax=3";
-        $self->run_cmd(cmd => $cmd, timeout => $timeout);
-    }
-    else {
-        $self->run_cmd(cmd => $cmd, runas=>"prdadm" , timeout => $timeout);
-    }
-}
-
-=head2 start_hana
-    start_hana([timeout => 60]);
-
-Start HANA DB using "HDB start" command
-
-=cut
-
-sub start_hana{
-    my ($self) = @_;
-    $self->run_cmd(cmd => "HDB start", runas=>"prdadm");
-}
-
-=head2 cleanup_resource
-    cleanup_resource([timeout => 60]);
-
-Cleanup rsource 'msl_SAPHana_PRD_HDB00', wait for DB start automaticlly.
-
-=cut
-
-sub cleanup_resource{
-    my ($self, %args) = @_;
-    my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
-    $self->run_cmd(cmd => "crm resource cleanup msl_SAPHana_PRD_HDB00");
-
-    # Wait for resource to start
-    my $start_time = time;
-    while ($self->is_hana_resource_running() == 0) {
-        if (time - $start_time > $timeout){
-            record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
-            die("Resource did not start within defined timeout. ($timeout sec).");
-        }
-        sleep 30;
-    }
-}
-
-=head2 check_takeover
-    check_takeover();
-
-Checks takeover status and waits for finish until successful or reaches timeout.
-=cut
-# TODO: Check if takeover happened
-sub check_takeover {
-    my ($self) = @_;
-    my $hostname = $self->{my_instance}->{instance_id};
-    my $takeover_complete = 0;
-    my $fenced_hana_status = $self->is_hana_online();
-    die("Fenced database '$hostname' is not offline") if ($fenced_hana_status == 1);
-
-    while ($takeover_complete == 0) {
-        my $topology = $self->get_hana_topology();
-
-        for my $entry (@$topology) {
-            my %host_entry = %$entry;
-            my $sync_state = $host_entry{sync_state};
-            my $takeover_host = $host_entry{Hosts};
-
-            if ($takeover_host ne $hostname && $sync_state eq "PRIM") {
-                $takeover_complete = 1;
-                record_info("Takeover status:", "Takeover complete to node '$takeover_host'" );
-                last;
-            }
-            sleep 30;
-        }
-    }
-
-    return 1;
-}
-
-=head2 register_hana
-    register_hana();
-
-=cut
-sub enable_replication {
-    my ($self) = @_;
-    my $hostname = $self->{my_instance}->{instance_id};
-    my $topology_out = $self->get_hana_topology(hostname => $hostname);
-    my %topology = %$topology_out;
-
-    my $cmd = "hdbnsutil -sr_register " .
-    "--name=$topology{Hosts} " .
-    "--remoteHost=$topology{remoteHost} " .
-    "--remoteInstance=00 " .
-    "--replicationMode=$topology{srmode} " .
-    "--operationMode=$topology{op_mode}";
-
-    record_info('CMD Run', $cmd);
-    $self->run_cmd(cmd => $cmd, runas => "prdadm");
-
-}
-
-=head2 get_replication_info
-    get_replication_info();
-    Parses hdbnsutil command output.
-    Returns hash of found values converted to lowercase and replaces spaces to underscores.
-=cut
-sub get_replication_info {
-    my ($self) = @_;
-    my $output_cmd = $self->run_cmd(cmd => "hdbnsutil -sr_state| grep -E :[^\^]", runas => "prdadm");
-
-    # Create a hash from hdbnsutil output ,convert to lowercase with underscore instead of space.
-    my %out = $output_cmd =~ /^?\s?([\/A-z\s]*\S+):\s(\S+)\n/g;
-    %out = map { $_ =~ s/\s/_/g; lc $_} %out;
-    return \%out;
-}
-
-
-sub get_promoted_instance {
-    my ($self) = @_;
-    my $instances = $self->{instances};
-    my $promoted;
-
-    # Identify Site A (Master) and Site B
-    foreach my $instance (@$instances) {
-        $self->{my_instance} = $instance;
-        my $instance_id = $instance->{'instance_id'};
-
-        # Skip instances without HANA db
-        next if ($instance_id !~ m/vmhana/);
-
-
-        my $promoted_id = $self->get_promoted_hostname();
-        $promoted = $instance if ($instance_id eq $promoted_id);
-    }
-
-    if ($promoted eq "undef" || !defined($promoted)) {
-        die("Failed to identify Hana 'PROMOTED' node") ;
-    }
-
-    return $promoted;
-}
->>>>>>> b516ecebd (HanaSR cloud library)
-
-=head2 wait_for_sync
-    wait_for_sync();
-    Wait for replica site to sync data with primary.
-    Checks "SAPHanaSR-showAttr" output and ensures replica site has "sync_state" "SOK".
-=cut
-<<<<<<< HEAD
-
-sub wait_for_sync {
-    my ($self, %args) = @_;
-    my $timeout = bmwqemu::scale_timeout($args{timeout} // 900);
-=======
-sub wait_for_sync {
-    my ($self, %args) = @_;
-    my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
->>>>>>> b516ecebd (HanaSR cloud library)
-    my $sok = 0;
-    record_info("Sync wait", "Waiting for data sync between nodes");
-
-    # Check sync status periodically until ok or timeout
-    my $start_time = time;
-
-    while ($sok == 0) {
-        my $topology = $self->get_hana_topology();
-        for my $entry (@$topology) {
-            my %entry = %$entry;
-<<<<<<< HEAD
-            next if !exists($entry{sync_state});
-=======
->>>>>>> b516ecebd (HanaSR cloud library)
-            $sok = 1 if $entry{sync_state} eq "SOK";
-            last if $sok == 1;
-        }
-
-<<<<<<< HEAD
-        if (time - $start_time > $timeout) {
-            record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
-            record_info("Sync FAIL", "Host replication status: " . $self->run_cmd(cmd => 'SAPHanaSR-showAttr'));
-=======
-        if (time - $start_time > $timeout){
-            record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
-            record_info("Sync FAIL", "Host replication status: " . run_cmd(cmd=>'SAPHanaSR-showAttr'));
->>>>>>> b516ecebd (HanaSR cloud library)
-            die("Replication SYNC did not finish within defined timeout. ($timeout sec).");
-        }
-        sleep 30;
-    }
-<<<<<<< HEAD
-    record_info("Sync OK", $self->run_cmd(cmd => "SAPHanaSR-showAttr"));
-=======
-    record_info("Sync OK", $self->run_cmd(cmd=>"SAPHanaSR-showAttr"));
->>>>>>> b516ecebd (HanaSR cloud library)
-    return 1;
-}
-
-
-<<<<<<< HEAD
 =head2 get_hana_topology
     get_hana_topology([hostname => $hostname]);
     Parses  command output, returns list of hashes containing values for each host.
@@ -487,18 +173,314 @@ sub get_hana_topology {
     return \@topology;
 }
 
-1;
-=======
-=head2 start_instance
-    start_instance([online_fail => 0, timeout => 300]);
-    Checks if PC instance offline starts it afterwards.
-    If "online_fail" is defined, test will fail if instance was not shut down previously.
+=head2 is_hana_online
+    is_hana_online([timeout => 120, wait_for_start => 'false']);
+
+Check if hana DB is online. Define 'wait_for_start' to wait for DB to start.
 =cut
-sub start_instance {
+
+sub is_hana_online {
+    my ($self, %args) = @_;
+    my $wait_for_start = defined($args{wait_for_start}) ? 1 : 0;
+    my $timeout = bmwqemu::scale_timeout($args{timeout} // 120);
+    my $start_time = time;
+    my $consecutive_passes = 0;
+    my $db_status = 0;
+
+    while ($consecutive_passes < 3) {
+        $db_status = 1 if ($self->get_replication_info()->{online} eq "true");
+        return $db_status if $wait_for_start == 0;
+
+        # reset pass counter in case of fail.
+        $consecutive_passes = $db_status ? ++ $consecutive_passes : 0;
+        die("DB did not start within defined timeout: $timeout s") if (time - $start_time > $timeout);
+        sleep 10;
+    }
+    return $db_status;
+}
+
+
+=head2 is_hana_resource_running
+    is_hana_resource_running([timeout => 60]);
+
+Checks if resource msl_SAPHana_* is running on given node.
+=cut
+
+sub is_hana_resource_running {
+    my ($self) = @_;
+    my $hostname = $self->{my_instance}->{instance_id};
+    my $hana_resource = join("_",
+        "msl",
+        "SAPHana",
+        "HDB",
+        get_required_var("INSTANCE_SID") . get_required_var("INSTANCE_ID"));
+
+    my $resource_output = $self->run_cmd(cmd => "crm resource status " . $hana_resource, quiet => 1);
+    my $node_status = grep /is running on: $hostname/, $resource_output;
+    record_info("Node status", "$hostname: $node_status");
+    return $node_status;
+}
+
+=head2 stop_hana
+    stop_hana();
+
+Stops hana database using method specified.
+Default method is 'stop = HDB stop'
+Methods available:
+  stop = HDB stop
+  kill = HDB kill -x
+  crash = proc-systrigger
+
+=cut
+
+sub stop_hana {
     my ($self, %args) = @_;
     my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
-    #my $fail_if_online = defined($args{online_fail}) ?
+    my $method = defined($args{method}) ? $args{method} : 'stop';
+    my %commands = (
+        stop => "HDB stop",
+        kill => "HDB kill -x",
+        crash => "echo b > /proc/sysrq-trigger &"
+    );
+
+    my $cmd = $commands{$method};
+
+    # wait for data sync before stopping DB
+    $self->wait_for_sync();
+
+    record_info("Stopping HANA", "CMD:$cmd");
+    if ($method eq "crash") {
+        $self->{my_instance}->run_ssh_command(cmd => "sudo su -c sync", timeout => "0", %args);
+        $self->{my_instance}->run_ssh_command(cmd => 'sudo su -c "' . $cmd . '"',
+            timeout => "0",
+            # Try only extending ssh_opts
+            ssh_opts => "-o ServerAliveInterval=2 -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR",
+            %args);
+        #$self->run_cmd(cmd => $cmd, timeout => $timeout);
+        sleep 10;
+        $self->{my_instance}->wait_for_ssh();
+        return ();
+    }
+    else {
+        $self->run_cmd(cmd => $cmd, runas => get_var("SAP_SIDADM"), timeout => $timeout);
+    }
+}
+
+=head2 start_hana
+    start_hana([timeout => 60]);
+
+Start HANA DB using "HDB start" command
+
+=cut
+
+sub start_hana {
+    my ($self) = @_;
+    $self->run_cmd(cmd => "HDB start", runas => get_var("SAP_SIDADM"));
+}
+
+=head2 cleanup_resource
+    cleanup_resource([timeout => 60]);
+
+Cleanup rsource 'msl_SAPHana_*', wait for DB start automaticlly.
+
+=cut
+
+sub cleanup_resource {
+    my ($self, %args) = @_;
+    my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
+
+    # Wait for resource to start
+    my $start_time = time;
+    while ($self->is_hana_resource_running() == 0) {
+        if (time - $start_time > $timeout) {
+            record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
+            die("Resource did not start within defined timeout. ($timeout sec).");
+        }
+        sleep 30;
+    }
+}
+
+=head2 check_takeover
+    check_takeover();
+
+Checks takeover status and waits for finish until successful or reaches timeout.
+=cut
+
+sub check_takeover {
+    my ($self) = @_;
+    my $hostname = $self->{my_instance}->{instance_id};
+    my $takeover_complete = 0;
+    my $fenced_hana_status = $self->is_hana_online();
+    die("Fenced database '$hostname' is not offline") if ($fenced_hana_status == 1);
+
+    while ($takeover_complete == 0) {
+        my $topology = $self->get_hana_topology();
+
+        for my $entry (@$topology) {
+            my %host_entry = %$entry;
+            my $sync_state = $host_entry{sync_state};
+            my $takeover_host = $host_entry{vhost};
+
+            if ($takeover_host ne $hostname && $sync_state eq "PRIM") {
+                $takeover_complete = 1;
+                record_info("Takeover status:", "Takeover complete to node '$takeover_host'");
+                last;
+            }
+            sleep 30;
+        }
+    }
+
+    return 1;
+}
+
+=head2 register_hana
+    register_hana();
+
+=cut
+
+sub enable_replication {
+    my ($self) = @_;
+    my $hostname = $self->{my_instance}->{instance_id};
+    my $topology_out = $self->get_hana_topology(hostname => $hostname);
+    my %topology = %$topology_out;
+
+    record_info("Topology", Dumper($topology_out));
+
+    my $cmd = "hdbnsutil -sr_register " .
+      "--name=$topology{vhost} " .
+      "--remoteHost=$topology{remoteHost} " .
+      "--remoteInstance=00 " .
+      "--replicationMode=$topology{srmode} " .
+      "--operationMode=$topology{op_mode}";
+
+    record_info('CMD Run', $cmd);
+    $self->run_cmd(cmd => $cmd, runas => get_var("SAP_SIDADM"));
+
+}
+
+=head2 get_replication_info
+    get_replication_info();
+    Parses hdbnsutil command output.
+    Returns hash of found values converted to lowercase and replaces spaces to underscores.
+=cut
+
+sub get_replication_info {
+    my ($self) = @_;
+    my $output_cmd = $self->run_cmd(cmd => "hdbnsutil -sr_state| grep -E :[^\^]", runas => get_var("SAP_SIDADM"));
+    record_info("replication info", $output_cmd);
+    # Create a hash from hdbnsutil output ,convert to lowercase with underscore instead of space.
+    my %out = $output_cmd =~ /^?\s?([\/A-z\s]*\S+):\s(\S+)\n/g;
+    %out = map { $_ =~ s/\s/_/g; lc $_ } %out;
+    return \%out;
+}
+
+
+sub get_promoted_instance {
+    my ($self) = @_;
+    my $instances = $self->{instances};
+    my $promoted;
+
+    # Identify Site A (Master) and Site B
+    foreach my $instance (@$instances) {
+        $self->{my_instance} = $instance;
+        my $instance_id = $instance->{'instance_id'};
+
+        # Skip instances without HANA db
+        next if ($instance_id !~ m/vmhana/);
+
+
+        my $promoted_id = $self->get_promoted_hostname();
+        $promoted = $instance if ($instance_id eq $promoted_id);
+    }
+
+    if ($promoted eq "undef" || !defined($promoted)) {
+        die("Failed to identify Hana 'PROMOTED' node");
+    }
+
+    return $promoted;
+}
+
+=head2 wait_for_sync
+    wait_for_sync();
+    Wait for replica site to sync data with primary.
+    Checks "SAPHanaSR-showAttr" output and ensures replica site has "sync_state" "SOK".
+=cut
+
+sub wait_for_sync {
+    my ($self, %args) = @_;
+    my $timeout = bmwqemu::scale_timeout($args{timeout} // 900);
+    my $sok = 0;
+    record_info("Sync wait", "Waiting for data sync between nodes");
+
+    # Check sync status periodically until ok or timeout
+    my $start_time = time;
+
+    while ($sok == 0) {
+        my $topology = $self->get_hana_topology();
+        for my $entry (@$topology) {
+            my %entry = %$entry;
+            next if !exists($entry{sync_state});
+            $sok = 1 if $entry{sync_state} eq "SOK";
+            last if $sok == 1;
+        }
+
+        if (time - $start_time > $timeout) {
+            record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
+            record_info("Sync FAIL", "Host replication status: " . $self->run_cmd(cmd => 'SAPHanaSR-showAttr'));
+            die("Replication SYNC did not finish within defined timeout. ($timeout sec).");
+        }
+        sleep 30;
+    }
+    record_info("Sync OK", $self->run_cmd(cmd => "SAPHanaSR-showAttr"));
+    return 1;
+}
+
+=head2 wait_for_pacemaker
+    wait_for_pacemaker();
+    Checks status of pacemaker via 'is-active' command an waits for startup.
+
+=cut
+
+sub wait_for_pacemaker {
+    my ($self, %args) = @_;
+    my $start_time = time;
+    my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
+    my $systemd_cmd = "systemctl --no-pager is-active pacemaker";
+    my $pacemaker_state = "";
+
+    while ($pacemaker_state ne "active") {
+        sleep 15;
+        $pacemaker_state = $self->run_cmd(cmd => $systemd_cmd, proceed_on_failure => 1);
+        if (time - $start_time > $timeout) {
+            record_info("Pacemaker status", $self->run_cmd(cmd => "systemctl --no-pager status pacemaker"));
+            die("Pacemaker did not start within defined timeout");
+        }
+    }
+    return 1;
+}
+
+=head2 setup_sbd_delay
+     setup_sbd_delay();
+     Set (activate or deactivate) SBD_DELAY setting in /etc/sysconfig/sbd
+
+=cut
+sub setup_sbd_delay() {
+    my ($self, $set_delay) = @_;
+    my $delay = !$set_delay ? "no" : $set_delay;
+    record_info("SBD delay", "Setting SBD delay to: $delay");
+    $self->cloud_file_content_replace('/etc/sysconfig/sbd', '^SBD_DELAY_START=.*', "SBD_DELAY_START=$delay");
+    return 1;
+}
+
+=head2 cloud_file_content_replace
+    cloud_file_content_replace();
+    Replaces file content direct on PC SUT. Similar to lib/utils.pm file_content_replace()
+=cut
+sub cloud_file_content_replace() {
+    my ($self, $filename, $search_pattern, $replace_with) = @_;
+    die("Missing input variable") if (!$filename || !$search_pattern || !$replace_with);
+    $self->run_cmd(cmd => sprintf("sed -E 's/%s/%s/g' -i %s", $search_pattern, $replace_with, $filename), quiet => 1);
+    return 1;
 }
 
 1;
->>>>>>> b516ecebd (HanaSR cloud library)
