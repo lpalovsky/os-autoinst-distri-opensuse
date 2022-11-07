@@ -384,32 +384,38 @@ sub get_promoted_instance {
 =head2 wait_for_sync
     wait_for_sync();
     Wait for replica site to sync data with primary.
-    Checks "SAPHanaSR-showAttr" output and ensures replica site has "sync_state" "SOK".
+    Checks "SAPHanaSR-showAttr" output and ensures replica site has "sync_state" "SOK && PRIM".
+    Continue after expected output matched twice continually to make sure cluster is really synced.
 =cut
 sub wait_for_sync {
     my ($self, %args) = @_;
     my $timeout = bmwqemu::scale_timeout($args{timeout} // 900);
-    my $sok = 0;
+    my $count = 30;
+    my $output_pass = 0;
+    my $output_fail = 0;
     record_info("Sync wait", "Waiting for data sync between nodes");
 
     # Check sync status periodically until ok or timeout
     my $start_time = time;
 
-    while ($sok == 0) {
-        my $topology = $self->get_hana_topology();
-        for my $entry (@$topology) {
-            my %entry = %$entry;
-            next if !exists($entry{sync_state});
-            $sok = 1 if $entry{sync_state} eq "SOK";
-            last if $sok == 1;
-        }
+    while ($count--) {
+        die 'HANA replication: node did not sync in time' if $count == 1;
+        die 'HANA replication: node is stuck at SFAIL' if $output_fail == 5;
+        sleep 30;
+        my $cmd = 'SAPHanaSR-showAttr|grep online';
+        my $ret = $self->run_cmd(cmd => $cmd, proceed_on_failure => 1);
+        $output_pass++ if $ret =~ /SOK/ && $ret =~ /PRIM/;
+        $output_pass-- if $output_pass == 1 && $ret !~ /SOK/ && $ret !~ /PRIM/;
+        $output_fail++ if $ret =~ /SFAIL/;
+        $output_fail-- if $output_fail >= 1 && $ret !~ /SFAIL/;
+        next if $output_pass < 2;
+        last if $output_pass == 2;
 
         if (time - $start_time > $timeout) {
             record_info("Cluster status", $self->run_cmd(cmd => $crm_mon_cmd));
             record_info("Sync FAIL", "Host replication status: " . $self->run_cmd(cmd => 'SAPHanaSR-showAttr'));
             die("Replication SYNC did not finish within defined timeout. ($timeout sec).");
         }
-        sleep 30;
     }
     record_info("Sync OK", $self->run_cmd(cmd => "SAPHanaSR-showAttr"));
     return 1;
