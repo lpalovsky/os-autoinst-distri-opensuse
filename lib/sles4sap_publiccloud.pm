@@ -290,12 +290,13 @@ Checks takeover status and waits for finish until successful or reaches timeout.
 # TODO: Check if takeover happened
 sub check_takeover {
     my ($self) = @_;
+    my $count = 15;
     my $hostname = $self->{my_instance}->{instance_id};
     my $takeover_complete = 0;
     my $fenced_hana_status = $self->is_hana_online();
     die("Fenced database '$hostname' is not offline") if ($fenced_hana_status == 1);
 
-    while ($takeover_complete == 0) {
+    while ($takeover_complete == 0 && $count--) {
         my $topology = $self->get_hana_topology();
 
         for my $entry (@$topology) {
