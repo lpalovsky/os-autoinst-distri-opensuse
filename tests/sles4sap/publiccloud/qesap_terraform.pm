@@ -29,6 +29,8 @@ use publiccloud::utils;
 use qesapdeployment;
 use sles4sap_publiccloud;
 use serial_terminal 'select_serial_terminal';
+use Data::Dumper;
+use Storable;
 
 our $ha_enabled = set_var_output("HA_CLUSTER", "0") =~ /false|0/i ? 0 : 1;
 
@@ -108,6 +110,26 @@ sub run {
     my ($self, $run_args) = @_;
     select_serial_terminal();
 
+    # TODO: DEPLOYMENT SKIP - REMOVE!!!
+    my $instances_export_path = get_var("INSTANCES_EXPORT");
+    my $instances_import_path = get_var("INSTANCES_IMPORT");
+    my $skip_deployment = get_var('INSTANCES_IMPORT');
+
+    if ($instances_export_path || $instances_import_path) {
+        set_var("PUBLIC_CLOUD_NO_CLEANUP_ON_FAILURE", 1);
+        set_var("PUBLIC_CLOUD_NO_CLEANUP", 1);
+    }
+
+    if (defined($skip_deployment) and length($skip_deployment)){
+        assert_script_run("ssh-keygen -t rsa -N '' -f ~/.ssh/id_rsa");
+        copy_ssh_keys();
+        $self->{instances} = $run_args->{instances} = retrieve($instances_import_path);
+        $self->identify_instances();
+        $run_args->{site_a} = $self->{site_a};
+        $run_args->{site_b} = $self->{site_b};
+        return;
+    }
+
     # Collect OpenQA variables and default values
     set_var_output("NODE_COUNT", 1) if $ha_enabled == 0;
     set_var_output("HANA_OS_MAJOR_VERSION", (split("-", get_var("VERSION")))[0]);
@@ -130,6 +152,13 @@ sub run {
     # Regenerate config files (This workaround will be replaced with full yaml generator)
     qesap_prepare_env(provider => lc(get_required_var('PUBLIC_CLOUD_PROVIDER')), only_configure => 1);
     # This tells "create_instances" to skip the deployment setup related to old ha-sap-terraform-deployment project
+
+
+    # TODO: DEPLOYMENT SKIP - REMOVE!!!
+    if (defined($instances_export_path) and length($instances_export_path)) {
+        copy_ssh_keys();
+    }
+
     $provider->{terraform_env_prepared} = 1;
     my @instances = $provider->create_instances(check_connectivity => 0);
     my @instances_export;
@@ -144,11 +173,63 @@ sub run {
         die if ($expected_hostname ne $real_hostname);
     }
 
+    # TODO: DEPLOYMENT SKIP - REMOVE!!!
+    record_info("Inst before export", Dumper(\@instances));
+    # Mostly for dev - for reusing deployed instances, load this file.
+    if (defined($instances_export_path) and length($instances_export_path)){
+        record_info('Exporting data', Dumper(\@instances_export));
+        record_info('Export path', Dumper($instances_export_path));
+        store(\@instances_export, $instances_export_path);
+    }
+    else{
+        record_info('NOT exporting data');
+    }
+
     $self->{instances} = $run_args->{instances} = \@instances_export;
     $self->{instance} = $run_args->{my_instance} = $run_args->{instances}[0];
     $self->{provider} = $run_args->{my_provider} = $provider;    # Required for cleanup
     record_info("Deployment OK",);
     return 1;
+}
+
+# Only for skip deployment - remove afterwards
+sub identify_instances {
+    my ($self) = @_;
+    my $instances = $self->{instances};
+    # Identify Site A (Master) and Site B
+    foreach my $instance (@$instances) {
+        $self->{my_instance} = $instance;
+        my $instance_id = $instance->{'instance_id'};
+
+        # Skip instances without HANA db
+        next if ($instance_id !~ m/vmhana/);
+
+        # Define initial state for both sites
+        # Site A is always PROMOTED after deployment
+        my $master_node = $self->get_promoted_hostname();
+        $self->{site_a} = $instance if ($instance_id eq $master_node);
+        $self->{site_b} = $instance if ($instance_id ne $master_node);
+    }
+
+    if ($self->{site_a}->{instance_id} eq "undef" || $self->{site_b}->{instance_id} eq "undef") {
+        die("Failed to identify Hana nodes") ;
+    }
+
+    record_info("Instances:", "Detected HANA instances:
+        Site A: $self->{site_a}->{instance_id}
+        Site B: $self->{site_b}->{instance_id}");
+
+}
+
+=head2 copy_ssh_keys
+Copies static ssh keys stored in /data/sls4sap/. Mostly for development purposes, most probably unsecure.
+=cut
+sub copy_ssh_keys{
+    foreach my $file ("id_rsa", "id_rsa.pub"){
+        assert_script_run("mkdir -p /root/.ssh");
+        assert_script_run("curl -f -v " . data_url("sles4sap/$file") . " -o /root/.ssh/$file");
+        assert_script_run("chmod 700 /root/.ssh/$file");
+    }
 }
 
 1;

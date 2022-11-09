@@ -26,6 +26,9 @@ sub run {
     my $ha_enabled = get_required_var("HA_CLUSTER") =~ /false|0/i ? 0 : 1;
     my $instances = $run_args->{instances};
 
+    # TODO: DEPLOYMENT SKIP - REMOVE !!!
+    return if get_var("INSTANCES_IMPORT");
+
     die("Ansible deploymend FAILED. Check 'qesap*' logs for details.") if qesap_execute(cmd => 'ansible', timeout => 3600, verbose => 1) > 0;
     record_info("FINISHED", "Ansible deployment process finished successfully.");
     return unless $ha_enabled;
