@@ -120,16 +120,6 @@ sub run {
         set_var("PUBLIC_CLOUD_NO_CLEANUP", 1);
     }
 
-    if (defined($skip_deployment) and length($skip_deployment)){
-        assert_script_run("ssh-keygen -t rsa -N '' -f ~/.ssh/id_rsa");
-        copy_ssh_keys();
-        $self->{instances} = $run_args->{instances} = retrieve($instances_import_path);
-        $self->identify_instances();
-        $run_args->{site_a} = $self->{site_a};
-        $run_args->{site_b} = $self->{site_b};
-        return;
-    }
-
     # Collect OpenQA variables and default values
     set_var_output("NODE_COUNT", 1) if $ha_enabled == 0;
     set_var_output("HANA_OS_MAJOR_VERSION", (split("-", get_var("VERSION")))[0]);
@@ -152,6 +142,16 @@ sub run {
     # Regenerate config files (This workaround will be replaced with full yaml generator)
     qesap_prepare_env(provider => lc(get_required_var('PUBLIC_CLOUD_PROVIDER')), only_configure => 1);
     # This tells "create_instances" to skip the deployment setup related to old ha-sap-terraform-deployment project
+
+    if (defined($skip_deployment) and length($skip_deployment)){
+        #assert_script_run("ssh-keygen -t rsa -N '' -f ~/.ssh/id_rsa");
+        copy_ssh_keys();
+        $self->{instances} = $run_args->{instances} = retrieve($instances_import_path);
+        $self->identify_instances();
+        $run_args->{site_a} = $self->{site_a};
+        $run_args->{site_b} = $self->{site_b};
+        return;
+    }
 
 
     # TODO: DEPLOYMENT SKIP - REMOVE!!!

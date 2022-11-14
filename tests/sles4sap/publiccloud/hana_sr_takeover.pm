@@ -1,4 +1,3 @@
-package hana_sr_takeover;
 use base 'sles4sap_publiccloud_basetest';
 use strict;
 use warnings FATAL => 'all';
