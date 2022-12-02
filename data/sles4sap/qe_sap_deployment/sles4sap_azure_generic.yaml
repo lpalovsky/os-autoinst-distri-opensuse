@@ -17,10 +17,9 @@ terraform:
     admin_user: 'cloudadmin'
     public_key : '~/.ssh/id_rsa.pub'
     private_key: '~/.ssh/id_rsa'
-    sles4sap_uri: 'https://%STORAGE_ACCOUNT_NAME%.blob.core.windows.net/sle-images/%SLE_IMAGE%'
+    sles4sap_uri: '%SLES4SAP_URI%'
+    os_image: '%PUBLIC_CLOUD_IMAGE_ID%'
     hana_os_major_version: '%HANA_OS_MAJOR_VERSION%'
-    storage_account_name: '%STORAGE_ACCOUNT_NAME%'
-    storage_account_key: '%STORAGE_ACCOUNT_KEY%'
 
     # HANA
     hana_count: '%NODE_COUNT%'

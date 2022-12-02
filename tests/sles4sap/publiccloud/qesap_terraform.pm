@@ -78,9 +78,9 @@ sub create_playbook_section {
     return (\@playbook_list);
 }
 
-=head2 create_ansible_playbook_list
+=head2 create_hana_vars_section
 
-    Detects HANA/HA scenario from openQA variables and creates "ansible: create:" section in config.yaml file.
+    Detects HANA/HA scenario from openQA variables and fetches related openQA variables accordingly.
 
 =cut
 
@@ -98,6 +98,30 @@ sub create_hana_vars_section {
         set_var("SAP_SIDADM", lc(get_var("INSTANCE_SID") . "adm"));
     }
     return (\%hana_vars);
+}
+
+=head2 set_os_image_parameters
+
+    Detects if public or internal os image is used and sets up config.yaml variables accordingly.
+
+=cut
+
+sub set_os_image_parameters {
+    # only one variable should be defined
+    die("Variables 'PUBLIC_CLOUD_IMAGE_LOCATION' and 'PUBLIC_CLOUD_IMAGE_ID' cannot be set at the same time")
+        if (get_var("PUBLIC_CLOUD_IMAGE_LOCATION") && get_var("PUBLIC_CLOUD_IMAGE_ID"));
+
+    if (get_var("PUBLIC_CLOUD_IMAGE_LOCATION")) {
+        my $storage_account_name = get_required_var("STORAGE_ACCOUNT_NAME");
+        my $sle_image = get_required_var("SLE_IMAGE");
+        set_var("SLES4SAP_URI", "https://$storage_account_name.blob.core.windows.net/sle-images/$sle_image");
+
+    }
+    else {
+        my $sle_product = get_required_var("SLE_PRODUCT");
+        my $version = get_required_var("VERSION");
+        my $public_cloud_image_id = "SUSE:$sle_product-sap-$version-byos:gen2:latest";
+    }
 }
 
 sub run {
