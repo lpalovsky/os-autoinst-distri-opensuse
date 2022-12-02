@@ -289,6 +289,8 @@ sub cleanup_resource {
     my ($self, %args) = @_;
     my $timeout = bmwqemu::scale_timeout($args{timeout} // 300);
 
+    $self->run_cmd(cmd => "crm resource cleanup");
+
     # Wait for resource to start
     my $start_time = time;
     while ($self->is_hana_resource_running() == 0) {
