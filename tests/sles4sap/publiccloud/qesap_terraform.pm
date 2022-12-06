@@ -100,6 +100,48 @@ sub create_hana_vars_section {
     return (\%hana_vars);
 }
 
+=head2 qesap_terraform_output
+
+    Desc
+
+=cut
+
+sub qesap_terraform_output {
+    my ($self, %args) = @_;
+    my %paths = qesap_get_file_paths();
+    my $provider = $args{provider};
+    my $tfstate_file = $paths{terraform_dir} . "/" . $provider . "/terraform.tfstate";
+    my $output = decode_json(script_output("terraform output -json -state=$tfstate_file"));
+    my $vms ;
+    my $ips;
+    my $resource_id;
+    my @instances;
+
+    foreach my $vm_type ('hana', 'drbd', 'netweaver') {
+            push @{$vms}, @{$output->{$vm_type . '_name'}->{value}};
+            push @{$ips}, @{$output->{$vm_type . '_public_ip'}->{value}};
+    }
+
+    foreach my $i (0 .. $#{$vms}) {
+        my $instance = publiccloud::instance->new(
+            public_ip => @{$ips}[$i],
+            resource_id => $resource_id,
+            instance_id => @{$vms}[$i],
+            username => "cloudadmin",
+            ssh_key => "",
+            image_id => "",
+            region => "",
+            type => "",
+            provider => $self
+        );
+        push @instances, $instance;
+    }
+
+    publiccloud::instances::set_instances(@instances);
+    # Return an ARRAY of objects 'instance'
+    return @instances;
+}
+
 sub run {
     my ($self, $run_args) = @_;
     select_serial_terminal();

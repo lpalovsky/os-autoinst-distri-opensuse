@@ -53,6 +53,7 @@ our @EXPORT = qw(
   qesap_get_inventory
   qesap_get_nodes_number
   qesap_get_terraform_dir
+  qesap_get_file_paths
   qesap_prepare_env
   qesap_execute
   qesap_yaml_replace
