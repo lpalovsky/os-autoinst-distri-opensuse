@@ -1,0 +1,51 @@
+# SUSE's openQA tests
+#
+# Copyright SUSE LLC
+# SPDX-License-Identifier: FSFAP
+# Maintainer: QE-SAP <qe-sap@suse.de>
+# Summary: Generic yaml template for use with qe-sap-deployment project: https://github.com/SUSE/qe-sap-deployment
+#   Settings are meant to be controlled via OpenQA variables and managed by test:
+#   tests/sles4sap/publiccloud/qesap_ansible.pm
+
+provider: 'gcp'
+apiver: 2
+terraform:
+  provider: 'gcp'
+  variables:
+    # GENERAL VARIABLES #
+    project: "ei-sle-qa-sap-8469"
+    gcp_credentials_file: "/root/google_credentials.json"
+    region: "%PUBLIC_CLOUD_REGION%"
+    admin_user: "cloudadmin"
+    public_key : "~/.ssh/id_rsa.pub"
+    private_key: "~/.ssh/id_rsa"
+    os_image: "%SLE_IMAGE%"
+    hana_os_major_version: "%HANA_OS_MAJOR_VERSION%"
+    drdb_os_major_version: "%HANA_OS_MAJOR_VERSION%"
+    iscsi_os_major_version: "%HANA_OS_MAJOR_VERSION%"
+    monitoring_os_major_version: "%HANA_OS_MAJOR_VERSION%"
+    netweaver_os_major_version: "%HANA_OS_MAJOR_VERSION%"
+    bastion_os_major_version: "%HANA_OS_MAJOR_VERSION%"
+
+
+    # HANA
+    machine_type: "%PUBLIC_CLOUD_INSTANCE_TYPE%"
+    hana_cluster_fencing_mechanism: "%FENCING_MECHANISM%"
+    #hana_cluster_vip_mechanism: "none"
+    hana_count: '%NODE_COUNT%'
+    hana_ha_enabled: '%HA_CLUSTER%'
+
+    # SBD
+    iscsi_name: "vmiscsi"
+    iscsi_os_image: "%SLE_IMAGE%"
+    iscsi_lun_count: 1
+    iscsi_disk_size: 1
+    machine_type_iscsi_server: "custom-1-2048"
+
+ansible:
+  hana_urls:
+    - "%HANA_SAR%"
+    - "%HANA_CLIENT_SAR%"
+    - "%HANA_SAPCAR%"
+  destroy:
+    - deregister.yaml
