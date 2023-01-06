@@ -29,6 +29,8 @@ use publiccloud::utils;
 use qesapdeployment;
 use sles4sap_publiccloud;
 use serial_terminal 'select_serial_terminal';
+use YAML::PP;
+use Data::Dumper;
 
 our $ha_enabled = set_var_output("HA_CLUSTER", "0") =~ /false|0/i ? 0 : 1;
 
@@ -60,19 +62,23 @@ sub create_playbook_section {
     my @playbook_list;
     my @hana_playbook_list = (
         "pre-cluster.yaml", "sap-hana-preconfigure.yaml -e use_sapconf=" . set_var_output("USE_SAPCONF", "true"),
-        "cluster_sbd_prep.yaml", "sap-hana-storage.yaml",
         "sap-hana-download-media.yaml", "sap-hana-install.yaml",
         "sap-hana-system-replication.yaml", "sap-hana-system-replication-hooks.yaml",
         "sap-hana-cluster.yaml"
     );
 
-    # Add registration module - "QESAP_SCC_NO_REGISTER" skips scc registration via ansible
+    # Add registration module as first element- "QESAP_SCC_NO_REGISTER" skips scc registration via ansible
     unless (get_var("QESAP_SCC_NO_REGISTER")) {
         my $reg_playbook = "registration.yaml -e reg_code=" . get_required_var("SCC_REGCODE_SLES4SAP") . " -e email_address=''";
         push(@playbook_list, $reg_playbook);
     }
 
-    if ($ha_enabled == 1) {
+    # Add SBD setup as first element if fencing mechanism is SBD
+    if (get_var("FENCING_MECHANISM" == "SBD") && $ha_enabled) {
+        unshift(@hana_playbook_list, "cluster_sbd_prep.yaml", "sap-hana-storage.yaml");
+    }
+
+    if ($ha_enabled) {
         push(@playbook_list, @hana_playbook_list);
     }
     return (\@playbook_list);
@@ -100,18 +106,49 @@ sub create_hana_vars_section {
     return (\%hana_vars);
 }
 
+sub create_instance_data {
+    my @instances = ();
+    my $inventory_file = qesap_get_inventory(get_required_var('PUBLIC_CLOUD_PROVIDER'));
+    my $ypp = YAML::PP->new;
+    my $raw_file = script_output("cat $inventory_file");
+    my $inventory_data = $ypp->load_string($raw_file)->{all}{children};
+
+    for my $type_label (keys %$inventory_data) {
+        my $type_data = $inventory_data->{$type_label}{hosts};
+        for my $vm_label (keys %$type_data) {
+            my $vm_data = $type_data->{$vm_label};
+            my $instance = publiccloud::instance->new(
+                public_ip   => $vm_data->{ansible_host},
+                instance_id => $vm_label,
+                username    => get_required_var("PUBLIC_CLOUD_USER"),
+                ssh_key     => "~/.ssh/id_rsa"
+            );
+            push @instances, $instance;
+        }
+    }
+    record_info("Instance DATA", Dumper(\@instances));
+    publiccloud::instances::set_instances(@instances);
+    return \@instances;
+}
+
+
 sub run {
     my ($self, $run_args) = @_;
-    select_serial_terminal();
+    my $resource_group = get_required_var("PUBLIC_CLOUD_RESOURCE_GROUP");
+    my $suffix = sprintf("%04x", rand(0xffff));
 
+    select_serial_terminal();
     # Collect OpenQA variables and default values
     set_var_output("NODE_COUNT", 1) if $ha_enabled == 0;
     set_var_output("HANA_OS_MAJOR_VERSION", (split("-", get_var("VERSION")))[0]);
     # Cluster needs at least 2 nodes
     die("HA cluster needs at least 2 nodes. Check 'NODE_COUNT' parameter.") if $ha_enabled && get_var("NODE_COUNT") <= 1;
 
+
     get_required_var("PUBLIC_CLOUD_INSTANCE_TYPE");
     set_var("FENCING_MECHANISM", "native") if $ha_enabled == 0;
+    set_var("PUBLIC_CLOUD_RESOURCE_GROUP", $resource_group . $suffix);
+    record_info("ResGroup", "Resource group used for deployment: " . get_var("PUBLIC_CLOUD_RESOURCE_GROUP"));
 
     my $provider = $self->provider_factory();
     set_var("SLE_IMAGE", $provider->get_image_id());
@@ -126,14 +163,17 @@ sub run {
     # Regenerate config files (This workaround will be replaced with full yaml generator)
     qesap_prepare_env(provider => lc(get_required_var('PUBLIC_CLOUD_PROVIDER')), only_configure => 1);
     # This tells "create_instances" to skip the deployment setup related to old ha-sap-terraform-deployment project
-    $provider->{terraform_env_prepared} = 1;
-    my @instances = $provider->create_instances(check_connectivity => 0);
-    my @instances_export;
+    record_info("Provider DUMP", Dumper($provider));
+    #$provider->{terraform_env_prepared} = 1;
+    #my @instances = $provider->create_instances(check_connectivity => 0);
+    die("Terraform deploymend FAILED. Check 'qesap*' logs for details.") if qesap_execute(cmd => 'terraform', timeout => 3600, verbose => 1) > 0;
+    my $instances = create_instance_data();
 
-    foreach my $instance (@instances) {
+    record_info("Instances DUMP", Dumper($instances));
+    foreach my $instance (@$instances) {
+        record_info("Instance", Dumper($instance));
         $self->{my_instance} = $instance;
         my $expected_hostname = $instance->{instance_id};
-        push(@instances_export, $instance);
         $instance->wait_for_ssh();
         # Does not fail for some reason.
         my $real_hostname = $instance->run_ssh_command(cmd => "hostname", username => "cloudadmin");
@@ -142,7 +182,7 @@ sub run {
           if ((is_azure || is_gce) && ($expected_hostname ne $real_hostname));
     }
 
-    $self->{instances} = $run_args->{instances} = \@instances_export;
+    $self->{instances} = $run_args->{instances};
     $self->{instance} = $run_args->{my_instance} = $run_args->{instances}[0];
     $self->{provider} = $run_args->{my_provider} = $provider;    # Required for cleanup
     record_info("Deployment OK",);
