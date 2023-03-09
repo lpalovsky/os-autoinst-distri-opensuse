@@ -48,9 +48,10 @@ sub run {
             '%AUTOMATED_REGISTER%' => get_required_var('AUTOMATED_REGISTER'),
             '%VIRTUAL_IP_ADDRESS%' => $virtual_ip,
             '%VIRTUAL_IP_NETMASK%' => $virtual_netmask);
-
-        foreach ($node1, $node2) {
-            add_to_known_hosts($_);
+        unless (get_var("FIPS_INSTALLATION") || get_var("FIPS_ENABLED")) {
+            foreach ($node1, $node2) {
+                add_to_known_hosts($_);
+            }
         }
         assert_script_run "scp -qr /usr/sap/$sid/SYS/global/security/rsecssfs/* root\@$node2:/usr/sap/$sid/SYS/global/security/rsecssfs/";
         assert_script_run qq(su - $sapadm -c "hdbsql -u system -p $sles4sap::instance_password -i $instance_id -d SYSTEMDB \\"BACKUP DATA FOR FULL SYSTEM USING FILE ('backup')\\""), 300;

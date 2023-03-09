@@ -1,19 +1,21 @@
 ---
-name: mau-extratests_fips
-description: qe-core test cases with fips enabled for Vendor Affirmation
+name: sles4sap_mau-extratests2
+description: Second set of CLI extratests
 schedule:
-  - installation/bootloader_start
   - boot/boot_to_desktop
   - fips/fips_setup
   - console/prepare_test_data
-  #- console/consoletest_setup
+  - console/consoletest_setup
+  - sles4sap/patterns
+  - fips/gnutls/gnutls_base_check
+  - fips/openjdk/openjdk_fips
   - console/curl_ipv6
   - console/wget_ipv6
   - console/ca_certificates_mozilla
   - console/unzip
   - console/rsync
   - console/shells
-  - console/sudo
+  #- console/sudo # Sles4SAP does not have user creation during installation
   - console/dstat
   - console/supportutils
   - console/mdadm
@@ -23,7 +25,7 @@ schedule:
   - console/timezone
   - console/procps
   - console/iotop
-  - console/systemd_rpm_macros
+  # - console/systemd_rpm_macros # NOT RELATED TO SLES4SAP
   - console/kmod
   - console/suse_module_tools
   - console/aaa_base
@@ -36,12 +38,13 @@ schedule:
   - console/libgcrypt
   - console/zziplib
   - console/nginx
-  - console/gdb
+  #- console/gdb # NOT RELATED TO SLES4SAP
   - console/sysctl
   - '{{arch_specific}}'
+
 conditional_schedule:
-  arch_specific:
+  arch_specific15_sp4:
     ARCH:
       x86_64:
         - console/ansible
-...
+
