@@ -66,6 +66,8 @@ sub run {
         barrier_create("LOCK_INIT_$cluster_name", $num_nodes);
         barrier_create("LOCK_RESOURCE_CREATED_$cluster_name", $num_nodes);
         barrier_create("LOGS_CHECKED_$cluster_name", $num_nodes);
+        barrier_create("MODIFY_COROSYNC_$cluster_name", $num_nodes);
+
         # We have to create barriers for each nodes if we want to be able to fence *all* nodes
         foreach (1 .. $num_nodes) {
             barrier_create("CHECK_AFTER_REBOOT_BEGIN_${cluster_name}_NODE$_", $num_nodes);

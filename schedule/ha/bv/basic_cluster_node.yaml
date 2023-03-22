@@ -69,6 +69,7 @@ schedule:
   - '{{remove_node}}'
   - '{{graceful_shutdown}}'
   - ha/check_logs
+  - '{{prepare_migration_qcow}}'
 conditional_schedule:
   cluster_setup:
     HA_CLUSTER_INIT:
@@ -97,3 +98,11 @@ conditional_schedule:
     HA_GRACEFUL_SHUTDOWN:
       1:
         - ha/graceful_shutdown
+  prepare_migration_qcow:
+    HA_PREPARE_MIGRATION_QCOW:
+      1:
+        - ha/prepare_shutdown
+        - console/force_scheduled_tasks
+        - console/scc_deregistration
+        - shutdown/cleanup_before_shutdown
+        - shutdown/shutdown

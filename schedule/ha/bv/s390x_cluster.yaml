@@ -72,6 +72,7 @@ schedule:
   - ha/check_after_reboot
   - '{{remove_node}}'
   - ha/check_logs
+  - '{{prepare_migration_qcow}}'
 conditional_schedule:
   barrier_setup:
     HA_CLUSTER_INIT:
@@ -96,3 +97,10 @@ conditional_schedule:
     HA_REMOVE_NODE:
       1:
         - ha/remove_node
+  prepare_migration_qcow:
+    HA_PREPARE_MIGRATION_QCOW:
+      1:
+        - console/scc_deregistration
+        - shutdown/cleanup_before_shutdown
+        - shutdown/shutdown
+        - shutdown/svirt_upload_assets

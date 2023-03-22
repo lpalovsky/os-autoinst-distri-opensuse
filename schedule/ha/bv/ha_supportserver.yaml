@@ -33,3 +33,11 @@ schedule:
   - support_server/setup
   - ha/barrier_init
   - support_server/wait_children
+  - '{{prepare_migration_qcow}}'
+conditional_schedule:
+  prepare_migration_qcow:
+    HA_PREPARE_MIGRATION_QCOW:
+      1:
+        - shutdown/cleanup_before_shutdown
+        - ha/migration_qcow_prepare_supportserver
+        - shutdown/shutdown
