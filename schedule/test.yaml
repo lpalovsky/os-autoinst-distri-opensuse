@@ -1,0 +1,12 @@
+---
+name: ha_supportserver
+description: >
+  random crap
+
+vars:
+  BOOT_HDD_IMAGE: '1'
+  DESKTOP: textmode
+
+schedule:
+  - boot/boot_to_desktop
+  - sles4sap/publiccloud/scrap_test
