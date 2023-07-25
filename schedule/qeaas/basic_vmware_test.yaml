@@ -1,0 +1,11 @@
+---
+name: hana_test
+description: >
+  Boot to jumphost used for vmware tests
+vars:
+  DESKTOP: 'textmode'
+
+schedule:
+  - microos/disk_boot
+  - qeaas/prepare_jumphost
+  - qeaas/deploy_vmware_vm
