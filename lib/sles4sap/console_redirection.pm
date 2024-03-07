@@ -42,14 +42,18 @@ In case of ssh keys being in place and command prompt appears, the fucntion does
 sub handle_login_prompt {
     my $pwd = get_var('_SECRET_SUT_PASSWORD', $testapi::password);
     set_serial_term_prompt();
-    my $serial_response = wait_serial(qr/Password:\s*$|:~/i);    # look for either password prompt or command prompt to appear
+    # look for either password prompt or command prompt to appear
+    my $serial_response = wait_serial(qr/Password:\s*$|:~/i, timeout => 20);
 
-    if (grep /Password:\s*$/, $serial_response) {    # Handle password prompt if it appears
+    die 'Neither password not command prompt appeared.' unless grep /Password:\s*$|:~/, $serial_response;
+    # Handle password prompt if it appears
+    if (grep /Password:\s*$/, $serial_response) {
         type_password $pwd;
         send_key 'ret';
+        # wait for command prompt to be ready
+        die 'Command prompt did not appear withing timeout' unless wait_serial((qr/:~|#|>/i), timeout => 20);
     }
-
-    wait_serial((qr/:~|#|>/i), timeout=>20);
+    set_serial_term_prompt();    # set correct serial prompt
 }
 
 =head2 redirection_init
@@ -72,7 +76,8 @@ sub redirection_init {
 
     set_serial_term_prompt();
 
-Detects if login prompt appears and types the password.
+Set expected serial prompt according to user which is currently active.
+This changes global setting $testapi::distri->{serial_term_prompt} which is important for calls like wait_for_serial.
 
 =cut
 
@@ -109,6 +114,7 @@ sub connect_target_to_serial {
 
     enter_cmd "ssh $ssh_opt $ssh_user\@$redirect_ip 2>&1 | tee -a /dev/$serialdev";
     handle_login_prompt($ssh_user);
+    check_serial_redirection();
     record_info('Redirect ON', "Serial redirection established to: $redirect_ip");
 }
 

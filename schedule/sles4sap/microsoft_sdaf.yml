@@ -1,0 +1,7 @@
+---
+name: microsoft_sdaf
+description: |
+  microsoft sdaf based deployment
+schedule:
+  - boot/boot_to_desktop
+  - sles4sap/microsoft_sdaf/sdaf_prepare_jumphost
