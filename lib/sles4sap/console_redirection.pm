@@ -58,38 +58,49 @@ sub handle_login_prompt {
 
 =head2 redirection_init
 
-    redirection_init( [, ssh_user=>$ssh_user, target_ip=>$target_ip, ssh_tunnel_port=>$ssh_tunnel_port]);
+    redirection_init( [, ssh_user=>$ssh_user, destination_ip=>$destination_ip, ssh_tunnel_port=>$ssh_tunnel_port]);
 
-B<ssh_user>: Target login user - default value is defined by OpenQA parameter REDIRECT_TARGET_USER
+B<ssh_user>: SSH login user for B<destination_ip> - default value is defined by OpenQA parameter REDIRECT_DESTINATION_USER
 
-B<target_ip>: Target host IP - default value is defined by OpenQA parameter REDIRECT_TARGET_IP
+B<destination_ip>: Destination host IP - default value is defined by OpenQA parameter REDIRECT_DESTINATION_IP
 
-B<ssh_tunnel_port>: local port used for reverse ssh tunnel, default: 22022
+B<ssh_tunnel_port>: Port on the B<destination_ip> to forward ssh traffic to. Default: 22022
 
 Does initial setup for console redirection which includes:
-- sets WORKER_VM_ID value with current machine id. This helps identifying the base (not redirected) VM.
-- SSH key exchange for reverse ssh connection.
-- remote port forwarding for reverse SSH and allows connection of remote host to openQA server resources.
 
+=over
+
+=item * Takes machine id value from currently controlled VM and sets BASE_VM_ID. This is considered origin point of
+    console redirection and a point where function disconnect_target_from_serial() stops 'logging out'.
+
+=item * SSH key exchange for reverse ssh connection.
+
+=item * remote port forwarding for reverse SSH session
+
+=item * remote port forwarding of incoming traffic from B<destination_ip> to OpenQA
+    server resources (upload_logs, download from 'data')
+
+=back
 =cut
 
 sub redirection_init {
     my (%args) = @_;
-    $args{target_ip} //= get_required_var('REDIRECT_TARGET_IP');
-    $args{ssh_user} //= get_required_var('REDIRECT_TARGET_USER');
+    $args{destination_ip} //= get_required_var('REDIRECT_DESTINATION_IP');
+    $args{ssh_user} //= get_required_var('REDIRECT_DESTINATION_USER');
     $args{ssh_tunnel_port} //= '22022';
 
     croak 'Package autossh is not installed' if script_run('rpm -qi autossh');
 
     record_info('Redirection init', 'Preparing console redirection');
 
-    # This should get worker VM id before any redirection happening
-    # ID serves as identification of the 'base' VM to return to.
-    set_var('WORKER_VM_ID', script_output 'cat /etc/machine-id');
+    # This should get base VM id before any redirection happening
+    # ID serves as identification for origin point where redirection is not anymore in place.
+    set_var('BASE_VM_ID', script_output 'cat /etc/machine-id');
 
     # Prepare keyless access from remote host to worker VM
     connect_target_to_serial(%args);
     script_run("sudo rm $reverse_ssh_key_base_name*", quiet => 1);
+    # remove any existing entry in known_hosts file
     script_run("ssh-keygen -R [localhost]:$args{ssh_tunnel_port} -f ~/.ssh/known_hosts", quiet => 1);
     script_run("sudo ssh-keygen -R [localhost]:$args{ssh_tunnel_port} -f /root/.ssh/known_hosts", quiet => 1);
     assert_script_run("ssh-keygen -f $reverse_ssh_key_base_name -t rsa -b 2048 -N ''");
@@ -100,7 +111,7 @@ sub redirection_init {
     assert_script_run("echo \"$public_key\" >> ~/.ssh/authorized_keys", quiet => 1);
 
     # Forward common ports.
-    # # Starts permanent reverse SSH connection from remote VM to worker VM.
+    # Starts permanent reverse SSH connection from remote VM to worker VM.
     remote_port_forward(destination_port => $args{ssh_tunnel_port},
         ssh_user => $args{ssh_user},
         destination_ip => 'localhost',
@@ -116,40 +127,45 @@ sub redirection_init {
 
 =head2 remote_port_forward
 
-    remote_port_forward(source_port=>$source_port, destination_ip=>$destination_ip
-        [, destination_port=>$destination_port, monitor_port=>$monitor_port, source_ip=>$source_ip]);
+    remote_port_forward(destination_port=>$destination_port, destination_ip=>$destination_ip
+        [, source_port=>$source_port, monitor_port=>$monitor_port, source_ip=>$source_ip]);
 
-B<source_ip>: Source IP address or hostname to forward incomming traffic from. Default: REDIRECT_TARGET_IP
+B<source_ip>: Source IP address or hostname to forward incoming traffic from. Default: REDIRECT_DESTINATION_IP
 
 B<destination_ip>: Destination IP or hostname where will the traffic be forwarded. Can be localhost as well.
 
 B<monitor_port>: Port for autossh to monitor tunnel status. Needs to be unique for each autossh instance. Default: off
 
-B<source_port>: Local port to forward traffic from. Default:
+B<source_port>:  B<source_ip> port to forward traffic from. Default: source_port=destination_port
 
-B<destination_port>: remote port that local port should be forwarded to, default: local_port=remote_port
+B<destination_port>: port which B<source_port> traffic should be forwarded to.
 
 B<ssh_user>: Login user for B<source_ip> host.
 
 Forwards traffic from B<source_ip>:B<source_port> to B<destination_ip>:B<destination_port>.
-For example it allows to fetch or upload logs from/toOpenQA instance from cloud host directly instead of copying through jumphost.
-This function is executed on a host that the console is currently logged into.
-If you need to forward port on for example on remote cloud host, you must redirect the console first!
-Check B<redirection_init>, B<connect_target_to_serial>, B<disconnect_target_from_serial>.
+For example: It allows Cloud based SUT uploading logs directly to openQA instance without being able to resolve it directly.
+Default finction behavior is:
+
+- redirecting same port
+
+- not using autossh monitoring port
 
 =cut
 
 sub remote_port_forward {
     my (%args) = @_;
-    $args{source_ip} //= get_required_var('REDIRECT_TARGET_IP');
-    $args{ssh_user} //= get_required_var('REDIRECT_TARGET_USER');
+    foreach ('destination_port', 'destination_ip') {
+        croak "Missing $args{$_} argument" unless $args{$_};
+    }
+
+    # source IP means source of the incomming traffic.
+    # REDIRECT_DESTINATION_IP and destination_ip are different things!
+    $args{source_ip} //= get_required_var('REDIRECT_DESTINATION_IP');
+    $args{ssh_user} //= get_required_var('REDIRECT_DESTINATION_USER');
     $args{monitor_port} //= '0';
-
-    croak 'Missing $args{destination_ip} argument' unless $args{destination_ip};
-
     $args{source_port} //= $args{destination_port};
-    my $current_user = script_output('whoami', quiet => 1);
 
+    my $current_user = script_output('whoami', quiet => 1);
     my $autossh_cmd = join(' ', 'autossh',
         "-M $args{monitor_port}",
         '-f', '-N',
@@ -159,7 +175,8 @@ sub remote_port_forward {
     $autossh_cmd = 'sudo ' . $autossh_cmd if $current_user ne 'root';
 
     assert_script_run($autossh_cmd);
-    record_info('Port FWD', "Local port '$args{source_port}' forwarded to remote port '$args{destination_port}'");
+    record_info('Port FWD',
+        "Forwarding set from '$args{source_ip}:$args{source_port}' to '$args{destination_ip}:$args{destination_port}'");
 }
 
 =head2 set_serial_term_prompt
@@ -178,43 +195,43 @@ sub set_serial_term_prompt {
 
 =head2 connect_target_to_serial
 
-    connect_target_to_serial( [, ssh_user=>ssh_user, target_ip=>$target_ip]);
+    connect_target_to_serial( [, ssh_user=>ssh_user, destination_ip=>$destination_ip]);
 
-B<ssh_user>: Login user - default value is defined by OpenQA parameter REDIRECT_TARGET_USER
+B<ssh_user>: SSH login user for B<destination_ip> - default value is defined by OpenQA parameter REDIRECT_DESTINATION_USER
 
-B<target_ip>: Target host IP - default value is defined by OpenQA parameter REDIRECT_TARGET_IP
+B<destination_ip>: Destination host IP - default value is defined by OpenQA parameter REDIRECT_DESTINATION_IP
 
-Establishes ssh connection to target and redirects serial output to serial concole on worker VM.
-This allows OpenQA access to command return codes and output for evaulation by standard API call.
+Establishes ssh connection to destination host and redirects serial output to serial console on worker VM.
+This allows OpenQA access to command return codes and output for evaluation by standard API call.
 
 =cut
 
 sub connect_target_to_serial {
     my (%args) = @_;
-    $args{target_ip} //= get_required_var('REDIRECT_TARGET_IP');
-    $args{ssh_user} //= get_required_var('REDIRECT_TARGET_USER');
+    $args{destination_ip} //= get_required_var('REDIRECT_DESTINATION_IP');
+    $args{ssh_user} //= get_required_var('REDIRECT_DESTINATION_USER');
+
+    croak "OpenQA variable BASE_VM_ID undefined. Run 'redirection_init()' first" unless get_var('BASE_VM_ID');
+    croak "IP address '$args{destination_ip}' is not valid." unless grep(/^$RE{net}{IPv4}$/, $args{destination_ip});
+    croak 'Global variable "$serialdev" undefined' unless $serialdev;
+    croak "Console is already redirected to:" . script_output('hostname', quiet => 1) if check_serial_redirection();
 
     # Save original value for 'AUTOINST_URL_HOSTNAME', and point requests to localhost
     # check os-autoinst/testapi.pm host_ip() function to get an idea about inner workings
     set_var('AUTOINST_URL_HOSTNAME_ORIGINAL', get_var('AUTOINST_URL_HOSTNAME'));
     set_var('AUTOINST_URL_HOSTNAME', 'localhost');
 
-    croak "OpenQA variable WORKER_VM_ID undefined. Run 'redirection_init()' first" unless get_var('WORKER_VM_ID');
-    croak "IP address '$args{target_ip}' is not valid." unless grep(/^$RE{net}{IPv4}$/, $args{target_ip});
-    croak 'Global variable "$serialdev" undefined' unless $serialdev;
-    croak "Console is already redirected to:" . script_output('hostname', quiet => 1) if check_serial_redirection();
-
-    enter_cmd "ssh $ssh_opt $args{ssh_user}\@$args{target_ip} 2>&1 | tee -a /dev/$serialdev";
+    enter_cmd "ssh $ssh_opt $args{ssh_user}\@$args{destination_ip} 2>&1 | tee -a /dev/$serialdev";
     handle_login_prompt($args{ssh_user});
     check_serial_redirection();
-    record_info('Redirect ON', "Serial redirection established to: $args{target_ip}");
+    record_info('Redirect ON', "Serial redirection established to: $args{destination_ip}");
 }
 
 =head2 disconnect_target_from_serial
 
-    disconnect_target_from_serial( [, worker_machine_id=$worker_machine_id]);
+    disconnect_target_from_serial( [, base_vm_machine_id=$base_vm_machine_id]);
 
-B<worker_machine_id>: Target host IP - default value is defined by OpenQA parameter WORKER_VM_ID from redirect_init()
+B<base_vm_machine_id>: ID of the base VM before redirection. Default is BASE_VM_ID value set by redirect_init()
 
 Disconnects target from serial console by typing 'exit' command until host machine ID matches ID of the worker VM.
 
@@ -222,16 +239,16 @@ Disconnects target from serial console by typing 'exit' command until host machi
 
 sub disconnect_target_from_serial {
     my (%args) = @_;
-    $args{worker_machine_id} //= get_required_var('WORKER_VM_ID');
+    $args{base_vm_machine_id} //= get_required_var('BASE_VM_ID');
     set_serial_term_prompt();
-    my $serial_redirection_status = check_serial_redirection(worker_machine_id => $args{worker_machine_id});
+    my $serial_redirection_status = check_serial_redirection(base_vm_machine_id => $args{base_vm_machine_id});
     while ($serial_redirection_status != 0) {
         enter_cmd('exit');    # Enter command and wait for screen start changing
         $testapi::distri->{serial_term_prompt} = '';    # reset console prompt
         wait_serial(qr/Connection.*closed./, timeout => 10, quiet => 1);    # Wait for connection to close
         wait_serial(qr/# |> /, timeout => 10, quiet => 1);    # Wait for console prompt to appear
         set_serial_term_prompt();    # after logout user might change and prompt with it.
-        $serial_redirection_status = check_serial_redirection($args{worker_machine_id});
+        $serial_redirection_status = check_serial_redirection($args{base_vm_machine_id});
     }
 
     # restore original 'AUTOINST_URL_HOSTNAME'
@@ -241,20 +258,20 @@ sub disconnect_target_from_serial {
 
 =head2 check_serial_redirection
 
-    check_serial_redirection( [, worker_machine_id=$worker_machine_id]);
+    check_serial_redirection( [, base_vm_machine_id=$base_vm_machine_id]);
 
-B<worker_machine_id>: Target host IP - default value is defined by OpenQA parameter WORKER_VM_ID from redirect_init()
+B<base_vm_machine_id>: ID of the base VM before redirection. Default is BASE_VM_ID value set by redirect_init()
 
-Compares current machine-id to the worker VM ID either defined by WORKER_VM_ID variable or positional argument.
+Compares current machine-id to the worker VM ID either defined by BASE_VM_ID variable or positional argument.
 Machine ID is used instead of IP addr since cloud VM IP might not be visible from the inside (for example via 'ip a')
 
 =cut
 
 sub check_serial_redirection {
     my (%args) = @_;
-    $args{worker_machine_id} //= get_required_var('WORKER_VM_ID');
+    $args{base_vm_machine_id} //= get_required_var('BASE_VM_ID');
     my $current_id = script_output('cat /etc/machine-id', quiet => 1);
-    my $redirection_status = $current_id eq $args{worker_machine_id} ? 0 : 1;
+    my $redirection_status = $current_id eq $args{base_vm_machine_id} ? 0 : 1;
     return $redirection_status;
 }
 
