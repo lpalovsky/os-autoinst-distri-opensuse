@@ -12,7 +12,7 @@ our $serialdev = 'ttyS0';    # this is a global OpenQA variable
 
 # make cleaning vars easier at the end of the unit test
 sub unset_vars {
-    my @variables = ('REDIRECT_TARGET_IP', 'WORKER_VM_ID');
+    my @variables = ('REDIRECT_TARGET_IP', 'REDIRECT_TARGET_USER', 'WORKER_VM_ID', 'QEMUPORT');
     set_var($_, undef) foreach @variables;
 }
 
@@ -94,15 +94,6 @@ subtest '[disconnect_target_from_serial]' => sub {
     dies_ok { disconnect_target_from_serial() } 'Fail without specifying machine ID and WORKER_VM_ID undefined';
 };
 
-subtest '[redirection_init]' => sub {
-    my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
-    $redirect->redefine(script_output => sub { return '7902847fcc554911993686a1d5eca2c8'; });
-
-    redirection_init();
-    is get_var('WORKER_VM_ID'), '7902847fcc554911993686a1d5eca2c8', 'Pass with WORKER_VM_ID being set correctly';
-    unset_vars();
-};
-
 subtest '[check_serial_redirection]' => sub {
     my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
     $redirect->redefine(script_output => sub { return '7902847fcc554911993686a1d5eca2c8'; });
@@ -117,6 +108,68 @@ subtest '[check_serial_redirection]' => sub {
 
     is check_serial_redirection(worker_machine_id => '123456'), '1', 'Pass with specifying ID via positional argument';
     dies_ok { check_serial_redirection() } 'Fail with WORKER_VM_ID being unset';
+};
+
+subtest '[redirection_init]' => sub {
+    my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
+    $redirect->redefine(assert_script_run => sub { return 1; });
+    $redirect->redefine(script_run => sub { return 0; });
+    $redirect->redefine(connect_target_to_serial => sub { return 1; });
+    $redirect->redefine(disconnect_target_from_serial => sub { return 1; });
+    $redirect->redefine(remote_port_forward => sub { return 1; });
+    $redirect->redefine(record_info => sub { return 1; });
+    $redirect->redefine(script_output => sub {
+            return '7902847fcc554911993686a1d5eca2c8' if grep(/machine-id/, @_);
+            return 'ghibli' if grep(/whoami/, @_);
+            return 'totoro';
+    });
+
+    set_var('REDIRECT_TARGET_IP', '192.168.1.5');
+    set_var('REDIRECT_TARGET_USER', 'ghibli');
+    set_var('QEMUPORT', '15685');
+
+    ok redirection_init(), 'Pass with correct usage';
+    is get_var('WORKER_VM_ID'), '7902847fcc554911993686a1d5eca2c8', 'Pass with WORKER_VM_ID being set correctly';
+
+    $redirect->redefine(script_run => sub { return 1; });
+    dies_ok { redirection_init() } 'Fail with autossh package not being installed';
+    unset_vars();
+};
+
+subtest '[remote_port_forward] Test via redirection_init()' => sub {
+    my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
+    my @assert_script_run;
+    my $as_root;
+    $redirect->redefine(assert_script_run => sub { push(@assert_script_run, $_[0]) if grep /autossh/, $_[0]; return '1985'; });
+    $redirect->redefine(script_run => sub { return 0; });
+    $redirect->redefine(connect_target_to_serial => sub { return 1; });
+    $redirect->redefine(disconnect_target_from_serial => sub { return 1; });
+    $redirect->redefine(record_info => sub { return 1; });
+    $redirect->redefine(script_output => sub { return 'root' if grep(/whoami/, @_) and $as_root; return 'ghibli'; });
+
+    set_var('REDIRECT_TARGET_IP', '192.168.1.5');
+    set_var('REDIRECT_TARGET_USER', 'ghibli');
+    set_var('QEMUPORT', '15685');
+
+    redirection_init();
+    is $assert_script_run[0],
+      'sudo autossh -M 20000 -f -N -R 22022:localhost:22022 ghibli@192.168.1.5',
+      'Forward port 80 as normal user via sudo';
+    is $assert_script_run[1],
+      'sudo autossh -M 20001 -f -N -R 15686:10.0.2.2:15686 ghibli@192.168.1.5',
+      'Forward qemu port as normal user via sudo';
+
+    $as_root = 1;
+    redirection_init();
+
+    is $assert_script_run[2],
+      'autossh -M 20000 -f -N -R 22022:localhost:22022 ghibli@192.168.1.5',
+      'Forward port 80 as root without sudo';
+    is $assert_script_run[3],
+      'autossh -M 20001 -f -N -R 15686:10.0.2.2:15686 ghibli@192.168.1.5',
+      'Forward qemu port as root without sudo';
+
+    unset_vars();
 };
 
 done_testing;
