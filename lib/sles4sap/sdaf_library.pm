@@ -17,6 +17,7 @@ use mmapi qw(get_current_job_id);
 use utils qw(write_sut_file);
 use File::Basename;
 use Regexp::Common qw(net);
+use utils qw(write_sut_file file_content_replace);
 
 =head1 SYNOPSIS
 
@@ -54,7 +55,13 @@ our @EXPORT = qw(
   serial_console_diag_banner
   set_common_sdaf_os_env
   prepare_sdaf_repo
-  cleanup_sdaf_files
+  generate_resource_group_name
+  set_os_variable
+  prepare_tfvars_file
+  sdaf_deploy_workload_zone
+  load_os_env_variables
+  sdaf_cleanup
+
 );
 
 
@@ -119,7 +126,33 @@ sub variable_file {
     return deployment_dir() . '/sdaf_variables';
 }
 
+=head2 command_output_into_log
 
+    command_output_into_log(command=>$command, log_file=>$log_file);
+
+B<command>: Command which output should be logged into file.
+B<log_file>: Full log file path and filename to pipe command output into.
+
+Transforms given command so it displays output in shell but also in a log file.
+It also takes care of reporting exit code of the command itself instead of the one from 'tee' command.
+Returns string with transformed command.
+
+Command structure: (command_to_execute 2>$1 | tee /log/file.log; exit ${PIPESTATUS[0]})
+    'exit ${PIPESTATUS[0]}' - returns 'command_to_execute' return code instead of one from 'tee'
+    (...) - puts everything into subshell to prevent 'exit' logging out of current shell
+    tee - writes output also into the log file
+
+
+=cut
+sub command_output_into_log {
+    my (%args) = @_;
+    foreach ('command', 'log_file') {
+        croak "Missing mandatory argument: $_" unless $args{$_};
+    }
+
+    my $result = join(' ', '(', $args{command}, '2>&1', '|', 'tee', $args{log_file}, ';', 'exit', '${PIPESTATUS[0]})');
+    return $result;
+}
 
 =head2 az_login
 
@@ -184,6 +217,45 @@ sub create_sdaf_os_var_file {
 
     write_sut_file(variable_file, join("\n", @$entries));
     assert_script_run('source ' . variable_file, quiet => 1);
+}
+
+=head2 set_os_variable
+
+    set_os_variable($variable_name, $variable_value);
+
+B<$variable_name> Variable name
+B<$variable_value> Variable value
+
+Exports temporary OS env variable.
+WARNING: This is executed via 'assert_script_run' therefore output will be visible in logs
+Returns executed command.
+
+=cut
+
+sub set_os_variable {
+    my ($variable_name, $variable_value) = @_;
+    my $env_cmd = "export $variable_name=$variable_value";
+    assert_script_run($env_cmd);
+    return ($env_cmd);
+}
+
+=head2 get_os_variable
+
+    get_os_variable($variable_name);
+
+B<$variable_name> Variable name
+
+Returns value of requested OS env variable name.
+Variable is acquired using 'echo' command and is visible in serial terminal output.
+
+=cut
+
+sub get_os_variable {
+    my ($variable_name) = @_;
+    croak 'Positional argument $variable_name not defined' unless $variable_name;
+    $variable_name =~ s/[\$}{]//g;
+
+    return script_output("echo \${$variable_name}", quiet => 1);
 }
 
 =head2 sdaf_get_deployer_ip
@@ -382,6 +454,20 @@ sub set_common_sdaf_os_env {
     create_sdaf_os_var_file(\@variables);
 }
 
+=head2 load_os_env_variables
+
+    load_os_env_variables();
+
+Sources file containing OS env variables required for executing SDAF.
+Currently deployer VM is a permanent installation with all tests using it. Therefore using .bashrc file for storing
+variables is not an option since tests would constantly overwrite variables between each other.
+
+=cut
+
+sub load_os_env_variables {
+    assert_script_run('source ' . variable_file);
+}
+
 =head2 get_tfvars_path
 
     get_tfvars_path(
@@ -443,6 +529,100 @@ sub get_tfvars_path {
 
     my $result = join('/', deployment_dir(), 'WORKSPACES', $file_path);
     return $result;
+}
+
+=head2 prepare_tfvars_file
+
+    prepare_tfvars_file(deployment_type=>$deployment_type);
+
+B<$deployment_type> Type of the deployment (workload_zone, sap_system, library... etc)
+
+Downloads tfvars template files from openQA data dir and places them into correct place within SDAF repo structure.
+Returns full path of the tfvars file.
+
+=cut
+
+sub prepare_tfvars_file {
+    my (%args) = @_;
+    my %tfvars_os_variable = (
+        deployer => 'deployer_parameter_file',
+        sap_system => 'sap_system_parameter_file',
+        workload_zone => 'workload_zone_parameter_file',
+        library => 'library_parameter_file'
+    );
+    my %tfvars_template_url = (
+        deployer => data_url('sles4sap/sdaf/DEPLOYER.tfvars'),
+        sap_system => data_url('sles4sap/sdaf/SAP_SYSTEM.tfvars'),
+        workload_zone => data_url('sles4sap/sdaf/WORKLOAD_ZONE.tfvars'),
+        library => data_url('sles4sap/sdaf/LIBRARY.tfvars')
+    );
+    croak 'Deplyoment type not specified' unless $args{deployment_type};
+    croak "Unknown deployment type: $args{deployment_type}" unless $tfvars_os_variable{$args{deployment_type}};
+
+    my $tfvars_file = get_os_variable($tfvars_os_variable{$args{deployment_type}});
+    my $retrieve_tfvars_cmd = join(' ', 'curl', '-v', '-fL', $tfvars_template_url{$args{deployment_type}}, '-o', $tfvars_file);
+
+    assert_script_run($retrieve_tfvars_cmd);
+    assert_script_run("test -f $tfvars_file");
+    replace_tfvars_variables($tfvars_file);
+    upload_logs($tfvars_file, log_name => "$args{deployment_type}.tfvars");
+    return $tfvars_file;
+}
+
+=head2 replace_tfvars_variables
+
+    replace_tfvars_variables();
+
+B<$deployment_type> Type of the deployment (workload_zone, sap_system, library... etc)
+
+Replaces variables
+
+=cut
+
+sub replace_tfvars_variables {
+    my ($tfvars_file) = @_;
+    croak 'Variable "$tfvars_file" undefined' unless defined($tfvars_file);
+    my @variables = qw(SDAF_ENV_CODE SDAF_LOCATION RESOURCE_GROUP SDAF_VNET_CODE SAP_SID);
+    my %to_replace = map { '%' . $_ . '%' => get_var($_, '') } @variables;
+    file_content_replace($tfvars_file, %to_replace);
+}
+
+=head2 sdaf_deploy_workload_zone
+
+    sdaf_deploy_workload_zone( $workload_tfvars_file );
+
+B<workload_tfvars_file>: Full path to workload zone deployment tfvars file
+
+Executes SDAF workload zone deployment using tfvars file specified.
+https://learn.microsoft.com/en-us/azure/sap/automation/deploy-workload-zone?tabs=linux#deploy-the-sap-workload-zone
+
+=cut
+
+sub sdaf_deploy_workload_zone {
+    my ($workload_tfvars_file) = @_;
+    croak 'Missing mandatory argument: workload_tfvars_file' unless defined($workload_tfvars_file);
+
+    # SDAF has to be executed from the profile directory
+    my ($tfvars_filename, $tfvars_path) = fileparse($workload_tfvars_file);
+
+    assert_script_run("cd $tfvars_path");
+    my $deployer_state_file = get_var('SDAF_DEPLOYER_TFSTATE',
+        '${deployer_env_code}-${region_code}-${deployer_vnet_code}-INFRASTRUCTURE.terraform.tfstate');
+
+    set_os_variable('parameterFile', $tfvars_filename);
+    set_os_variable('deployerState', $deployer_state_file);
+
+    my $deploy_command = join(' ', '$SAP_AUTOMATION_REPO_PATH/deploy/scripts/install_workloadzone.sh', '--parameterfile',
+        $tfvars_filename, '--deployer_environment', '${deployer_env_code}', '--deployer_tfstate_key',
+        $deployer_state_file, '--keyvault', '${key_vault}', '--storageaccountname', '${tfstate_storage_account}',
+        '--subscription', '${ARM_SUBSCRIPTION_ID}', '--tenant_id', '${ARM_TENANT_ID}', '--spn_id',
+        '${ARM_CLIENT_ID}', '--spn_secret', '${ARM_CLIENT_SECRET}', '--auto-approve');
+    my $output_log_file = log_dir() . "/deploy_workload_zone.log";
+
+    my $rc = script_run(command_output_into_log(command => $deploy_command, log_file => $output_log_file), timeout => 1800);
+    upload_logs($output_log_file, log_name => 'deploy_workload_zone.log');
+    die "Workload zone deployment failed with RC: $rc" if $rc;
+    record_info('Deploy done');
 }
 
 =head2 prepare_sdaf_repo
@@ -513,14 +693,124 @@ sub prepare_sdaf_repo {
     assert_script_run("mkdir -p $_") foreach @create_workspace_dirs;
 }
 
-=head2 cleanup_sdaf_files
+=head2 generate_resource_group_name
 
-    cleanup_sdaf_files();
+    generate_resource_group_name(deployment_type=>$deployment_type);
 
-Cleans up all SDAF deployment files belonging to the running test.
+B<$deployment_type> Type of the deployment (workload_zone, sap_system, library... etc)
+
+Returns name of the resource group according to the deployment type specified by OpenQA variable: 'SDAF_DEPLOYMENT_TYPE'.
+Resource group pattern I<SDAF-OpenQA-[deployment type]-[deployment id]>
 
 =cut
 
-sub cleanup_sdaf_files {
-    assert_script_run('rm -Rf ' . deployment_dir);
+sub generate_resource_group_name {
+    my (%args) = @_;
+    my @supported_types = ('workload_zone', 'sap_system', 'library', 'deployer');
+    croak "Unsupported deployment type: $args{deployment_type}\nCurrently supported ones are: @supported_types" unless
+      grep(/^$args{deployment_type}$/, @supported_types);
+    my $job_id = get_current_job_id();
+    my $resource_group = join('-', 'SDAF', 'OpenQA', $args{deployment_type}, $job_id);
+
+    return $resource_group;
 }
+
+=head2 resource_group_exists
+
+    resource_group_exists($resource_group);
+
+B<$resource_group> Resource group name to check
+
+Checks if resource group exists. Function accepts only full resource name.
+Croaks if command does not return true/false value.
+
+=cut
+
+sub resource_group_exists {
+    my ($resource_group) = @_;
+    croak 'Resource group not defined' unless $resource_group;
+
+    my $cmd_out = script_output("az group exists -n $resource_group");
+    die "Command 'az group exists -n $resource_group' failed.\nCommand returned: $cmd_out" unless grep /false|true/, $cmd_out;
+    return 0 if $cmd_out eq 'false';
+    return 1 if $cmd_out eq 'true';
+}
+
+=head2 sdaf_execute_remover
+
+    sdaf_execute_remover(deployment_type=>$deployment_type);
+
+B<$deployment_type> Type of the deployment (workload_zone, sap_system)
+
+Uses remover.sh script which is part of the SDAF project. This script can be used only on workload zone or sap system.
+Control plane and library have separate removal script, but are currently part of permanent setup and should not be destroyed.
+https://learn.microsoft.com/en-us/azure/sap/automation/bash/remover
+
+=cut
+
+sub sdaf_execute_remover {
+    my (%args) = @_;
+    croak 'Missing mandatory argument "deployment_type"' unless $args{deployment_type};
+    croak 'This function can be used only on sap system and workload zone removal' unless
+      grep /^$args{deployment_type}$/, ('sap_system', 'workload_zone');
+
+    # SDAF remover.sh uses 'sap_landscape' instead of 'workload_zone'.
+    my $type_parameter = $args{deployment_type} eq 'workload_zone' ? 'sap_landscape' : $args{deployment_type};
+
+    my $tfvars_file;
+    $tfvars_file = get_os_variable('sap_system_parameter_file') if $args{deployment_type} eq 'sap_system';
+    $tfvars_file = get_os_variable('workload_zone_parameter_file') if $args{deployment_type} eq 'workload_zone';
+    die 'Function failed to retrieve tfvars file via OS variable.' unless $tfvars_file;
+
+    my ($tfvars_filename, $tfvars_path) = fileparse($tfvars_file);
+    my $remover_cmd = join(' ',
+        deployment_dir() . '/sap-automation/deploy/scripts/remover.sh',
+        '--parameterfile', $tfvars_filename,
+        '--type', $type_parameter,
+        '--auto-approve');
+
+    # capture command output into log file
+    my $output_log_file = log_dir() . "/cleanup_$args{deployment_type}.log";
+    $remover_cmd = command_output_into_log(command => $remover_cmd, log_file => $output_log_file);
+
+    # SDAF has to be executed from the profile directory
+    assert_script_run("cd " . $tfvars_path);
+    record_info('SDAF destroy', "Executing SDAF remover:\n$remover_cmd");
+    my $rc = script_run($remover_cmd, timeout => 3600);
+    upload_logs($output_log_file, log_name => $output_log_file);
+
+    # Do not kill the test, only return RC. There are still files to be cleaned up on deployer VM.
+    return $rc;
+}
+
+=head2 sdaf_cleanup
+
+    sdaf_cleanup();
+
+Performs full cleanup routine for B<sap systems> and B<workload zone> by executing SDAF remover.sh file.
+Deletes all files related to test run on deployer VM, even in case remover script fails.
+Rescource groups need to be deleted manually in case of failure.
+
+=cut
+
+sub sdaf_cleanup {
+    my $remover_rc = 1;
+    # Sap system needs to be destroyed before workload zone so order matters here.
+    for my $deployment_type ('sap_system', 'workload_zone') {
+        my $resource_group = resource_group_exists(generate_resource_group_name(deployment_type => $deployment_type));
+        unless ($resource_group) {
+            record_info('Cleanup skip', "Resource group for deployment type '$deployment_type' does not exist. Skipping cleanup");
+            next;
+        }
+
+        $remover_rc = sdaf_execute_remover(deployment_type => $deployment_type);
+        if ($remover_rc) {
+            # Cleanup files from deployer VM before killing test
+            assert_script_run('rm -Rf ' . deployment_dir);
+            die('SDAF remover script failed. Please check logs and delete resource groups manually');
+        }
+    }
+    assert_script_run('rm -Rf ' . deployment_dir);
+    record_info('Cleanup files', join(' ', 'Deployment directory', deployment_dir(), 'was deleted.'));
+}
+

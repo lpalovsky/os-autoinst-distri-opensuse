@@ -162,8 +162,82 @@ subtest '[prepare_tfvars_file] Test missing or incorrect args' => sub {
     my @incorrect_deployment_types = qw(funny_library eployer sap_ workload _zone);
 
     dies_ok { prepare_tfvars_file(); } 'Fail without specifying "$deployment_type"';
-    dies_ok { prepare_tfvars_file($_); } "Fail with incorrect deployment type: $_" foreach @incorrect_deployment_types;
+    dies_ok { prepare_tfvars_file(deployment_type => $_); } "Fail with incorrect deployment type: $_" foreach @incorrect_deployment_types;
 
+};
+
+subtest '[prepare_tfvars_file] Test curl commands' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    my $curl_cmd;
+    $ms_sdaf->redefine(assert_script_run => sub { $curl_cmd = $_[0] if grep(/curl/, $_[0]); return 1; });
+    $ms_sdaf->redefine(upload_logs => sub { return 1; });
+    $ms_sdaf->redefine(replace_tfvars_variables => sub { return 1; });
+    $ms_sdaf->redefine(get_os_variable => sub { return $_[0]; });
+    $ms_sdaf->redefine(data_url => sub { return 'http://openqa.suse.de/data/' . join('', @_); });
+
+    # '-o' is only for checking if correct parameter gets picked from %tfvars_os_variable
+    my %expected_results = (
+        deployer => 'curl -v -fL http://openqa.suse.de/data/sles4sap/sdaf/DEPLOYER.tfvars -o deployer_parameter_file',
+        sap_system => 'curl -v -fL http://openqa.suse.de/data/sles4sap/sdaf/SAP_SYSTEM.tfvars -o sap_system_parameter_file',
+        workload_zone => 'curl -v -fL http://openqa.suse.de/data/sles4sap/sdaf/WORKLOAD_ZONE.tfvars -o workload_zone_parameter_file',
+        library => 'curl -v -fL http://openqa.suse.de/data/sles4sap/sdaf/LIBRARY.tfvars -o library_parameter_file'
+    );
+
+    for my $type (keys %expected_results) {
+        prepare_tfvars_file(deployment_type => $type);
+        is $curl_cmd, $expected_results{$type}, "Return corect url and tfvars variable";
+    }
+};
+
+subtest '[replace_tfvars_variables] Test correct variable replacement' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    $ms_sdaf->redefine(assert_script_run => sub { return 1; });
+    $ms_sdaf->redefine(script_output => sub { return '/somewhere/in/the/Shire'; });
+    $ms_sdaf->redefine(upload_logs => sub { return 1; });
+    $ms_sdaf->redefine(data_url => sub { return 'openqa.suse.de/data/' . join('', @_); });
+    $ms_sdaf->redefine(record_info => sub { note(join(' ', 'RECORD_INFO -->', @_)); });
+    my %replaced_variables;
+    $ms_sdaf->redefine(file_content_replace => sub { %replaced_variables = @_[1 .. $#_]; return 1; });
+
+    my %expected_variables = (
+        SDAF_ENV_CODE => 'Balbo',
+        SDAF_LOCATION => 'Mungo',
+        RESOURCE_GROUP => 'Bungo',
+        SDAF_VNET_CODE => 'Bilbo',
+        SAP_SID => 'Frodo'
+    );
+
+    for my $var_name (keys %expected_variables) {
+        set_var($var_name, $expected_variables{$var_name});
+    }
+    prepare_tfvars_file(deployment_type => 'workload_zone');
+
+    for my $var_name (keys(%expected_variables)) {
+        is $replaced_variables{'%' . $var_name . '%'}, $expected_variables{$var_name},
+          "Pass with %$var_name% replaced by '$expected_variables{$var_name}'";
+    }
+    undef_variables();
+};
+
+subtest '[generate_resource_group_name]' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    $ms_sdaf->redefine(get_current_job_id => sub { return '0079'; });
+    my @expected_failures = ('something_funky', 'workload', 'zone', 'sut', 'lib', 'deploy');
+    my %expected_pass = (
+        workload_zone => 'SDAF-OpenQA-workload_zone-0079',
+        sap_system => 'SDAF-OpenQA-sap_system-0079',
+        deployer => 'SDAF-OpenQA-deployer-0079',
+        library => 'SDAF-OpenQA-library-0079'
+    );
+
+    for my $value (@expected_failures) {
+        dies_ok { generate_resource_group_name(deployment_type => $value); } "Fail with unsupported 'SDAF_DEPLOYMENT_TYPE' value: $value";
+    }
+
+    for my $type (keys %expected_pass) {
+        my $rg = generate_resource_group_name(deployment_type => $type);
+        is $rg, $expected_pass{$type}, "Pass with '$type' and resource group '$rg";
+    }
 };
 
 subtest '[serial_console_diag_banner] ' => sub {
@@ -176,6 +250,31 @@ subtest '[serial_console_diag_banner] ' => sub {
     is $printed_output, $correct_output, "Print banner correctly in uppercase:\n$correct_output";
     dies_ok { serial_console_diag_banner() } 'Fail with missing test to be printed';
     dies_ok { serial_console_diag_banner('exeCuTing deploYment' x 6) } 'Fail with string exceeds max number of characters';
+};
+
+subtest '[sdaf_deploy_workload_zone] Test missing arguments' => sub {
+    dies_ok { sdaf_deploy_workload_zone() } 'Expected failure with missing argument: workload_tfvars_file';
+};
+
+subtest '[sdaf_deploy_workload_zone]' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    my $config_path_command;
+    my $sdaf_command;
+    $ms_sdaf->redefine(assert_script_run => sub { $config_path_command = $_[0] if grep(/^cd\s/, @_); return 0; });
+    $ms_sdaf->redefine(script_run => sub { $sdaf_command = $_[0] if grep(/install_workloadzone.sh/, @_); return 0; });
+    $ms_sdaf->redefine(record_info => sub { return 1; });
+    $ms_sdaf->redefine(set_os_variable => sub { return 1; });
+    $ms_sdaf->redefine(generate_resource_group_name => sub { return 1; });
+    $ms_sdaf->redefine(upload_logs => sub { return 1; });
+    $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
+
+    my $tfvars_file = '/root/Azure_SAP_Automated_Deployment/WORKSPACES/DEPLOYER/LAB-SECE-DEP05-INFRASTRUCTURE/LAB-SECE-DEP05-INFRASTRUCTURE.tfvars';
+    my $expected_command = '( $SAP_AUTOMATION_REPO_PATH/deploy/scripts/install_workloadzone.sh --parameterfile LAB-SECE-DEP05-INFRASTRUCTURE.tfvars --deployer_environment ${deployer_env_code} --deployer_tfstate_key ${deployer_env_code}-${region_code}-${deployer_vnet_code}-INFRASTRUCTURE.terraform.tfstate --keyvault ${key_vault} --storageaccountname ${tfstate_storage_account} --subscription ${ARM_SUBSCRIPTION_ID} --tenant_id ${ARM_TENANT_ID} --spn_id ${ARM_CLIENT_ID} --spn_secret ${ARM_CLIENT_SECRET} --auto-approve 2>&1 | tee /tmp/openqa_logs/deploy_workload_zone.log ; exit ${PIPESTATUS[0]})';
+
+    sdaf_deploy_workload_zone($tfvars_file);
+    is $config_path_command,
+      'cd /root/Azure_SAP_Automated_Deployment/WORKSPACES/DEPLOYER/LAB-SECE-DEP05-INFRASTRUCTURE/', 'Enter correct config path';
+    is $sdaf_command, $expected_command, 'Pass with executing correct command';
 };
 
 subtest '[sdaf_prepare_ssh_keys]' => sub {
@@ -310,6 +409,76 @@ subtest '[az_login]' => sub {
       join("\n", 'export ARM_CLIENT_ID=some-id', 'export ARM_CLIENT_SECRET=$0me_paSSw0rdt', 'export ARM_TENANT_ID=some-tennant-id'),
       'Create temporary file correctly';
     undef_variables();
+};
+
+subtest '[sdaf_cleanup] Test correct usage' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    my $files_deleted;
+
+    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+    $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
+    $ms_sdaf->redefine(record_info => sub { return 1; });
+    $ms_sdaf->redefine(sdaf_execute_remover => sub { return 0; });
+    $ms_sdaf->redefine(assert_script_run => sub { $files_deleted = 1; return 1; });
+    $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
+
+    ok sdaf_cleanup(), 'Pass with correct usage';
+    is $files_deleted, 1, 'Function must delete files at the end';
+};
+
+subtest '[sdaf_cleanup] Test remover script failures' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    my $files_deleted;
+
+    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+    $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
+    $ms_sdaf->redefine(sdaf_execute_remover => sub { return '0'; });
+    $ms_sdaf->redefine(record_info => sub { return 1; });
+    $ms_sdaf->redefine(assert_script_run => sub { $files_deleted = 1; return; });
+    $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
+
+    $ms_sdaf->redefine(sdaf_execute_remover => sub { return 1; });
+    dies_ok { sdaf_cleanup() } 'Test failing remover script';
+    is $files_deleted, 1, 'Function must delete files after remover failure';
+
+
+};
+
+subtest '[sdaf_execute_remover] Test expected failure' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+    $ms_sdaf->redefine(assert_script_run => sub { return; });
+    $ms_sdaf->redefine(record_info => sub { return 1; });
+    $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
+    $ms_sdaf->redefine(get_os_variable => sub { return ''; });
+
+    dies_ok { sdaf_execute_remover(deployment_type => 'workload_zone') } 'Fail with undefined tfvars OS variable';
+};
+
+subtest '[sdaf_execute_remover] Test functionality' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_library', no_auto => 1);
+    my @script_run_calls;
+    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+    $ms_sdaf->redefine(resource_group_exists => sub { return '1'; });
+    $ms_sdaf->redefine(upload_logs => sub { return; });
+    $ms_sdaf->redefine(log_dir => sub { return '/log/dir/path'; });
+    $ms_sdaf->redefine(deployment_dir => sub { return '/some/path'; });
+    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+    $ms_sdaf->redefine(record_info => sub { return 0; });
+    $ms_sdaf->redefine(script_run => sub { push @script_run_calls, $_[0] if grep /remover/, $_[0]; return 0; });
+    $ms_sdaf->redefine(get_os_variable => sub {
+            return '/some/path/LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars' if $_[0] eq 'workload_zone_parameter_file';
+            return '/some/path/LAB-SECE-SAP04-QES-6453.tfvars' if $_[0] eq 'sap_system_parameter_file';
+    });
+
+    sdaf_cleanup();
+    is $script_run_calls[0],
+'( /some/path/sap-automation/deploy/scripts/remover.sh --parameterfile LAB-SECE-SAP04-QES-6453.tfvars --type sap_system --auto-approve 2>&1 | tee /log/dir/path/cleanup_sap_system.log ; exit ${PIPESTATUS[0]})',
+      'Return correct command for workload zone deployment';
+
+    is $script_run_calls[1],
+'( /some/path/sap-automation/deploy/scripts/remover.sh --parameterfile LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars --type sap_landscape --auto-approve 2>&1 | tee /log/dir/path/cleanup_workload_zone.log ; exit ${PIPESTATUS[0]})',
+      'Return correct command for SAP system deployment';
 };
 
 
