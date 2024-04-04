@@ -19,9 +19,11 @@ sub test_flags {
 sub run {
 
     select_serial_terminal();
+    # Mark module start in serial console
+    message_to_serial('START: sdaf_redirect_console_to_deployer.pm');
+
     # autossh is required for console redirection to work
     assert_script_run('zypper in -y autossh');
-
     az_login();
     my $deployer_ip = sdaf_get_deployer_ip(deployer_resource_group => get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP'));
     # SDAF does not need privileged user to run.
@@ -31,6 +33,8 @@ sub run {
     set_var('REDIRECT_DESTINATION_IP', $deployer_ip);    # IP addr to redirect console to
     sdaf_prepare_ssh_keys(deployer_key_vault => get_required_var('SDAF_KEY_VAULT'));
 
+    # Mark module end in serial console
+    message_to_serial('START: sdaf_redirect_console_to_deployer.pm');
     redirection_init();
 }
 

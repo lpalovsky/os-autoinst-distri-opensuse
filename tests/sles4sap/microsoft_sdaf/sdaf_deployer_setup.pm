@@ -44,19 +44,19 @@ sub check_required_vars {
 
 sub run {
     select_serial_terminal();
+    # Mark module start in serial console
+    message_to_serial('START: sdaf_deployer_setup.pm');
 
     # From now on everything is executed on Deployer VM (residing on cloud).
     connect_target_to_serial();
-
     my $subscription_id = az_login();
     set_common_sdaf_os_env(subscription_id => $subscription_id);
     prepare_sdaf_repo();
     record_info('Jumphost ready');
-    serial_console_diag_banner('end: sdaf_deployer_setup.pm');
-
-    # Do not leave connection hanging around between modules.
+    # Do not leave open connection between modules.
     disconnect_target_from_serial();
-
+    # Mark module end in serial console
+    message_to_serial('END: sdaf_deployer_setup.pm');
 }
 
 1;

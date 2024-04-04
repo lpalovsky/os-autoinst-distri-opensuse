@@ -8,9 +8,11 @@ package sles4sap::console_redirection;
 use strict;
 use warnings;
 use testapi;
+use testapi qw(is_serial_terminal :DEFAULT);
 use Carp qw(croak);
 use Exporter qw(import);
 use Regexp::Common qw(net);
+use serial_terminal qw(select_serial_terminal);
 
 =head1 SYNOPSIS
 
@@ -23,6 +25,7 @@ our @EXPORT = qw(
   connect_target_to_serial
   disconnect_target_from_serial
   redirection_init
+  message_to_serial
   check_serial_redirection
 );
 
@@ -275,6 +278,51 @@ sub check_serial_redirection {
     my $current_id = script_output('cat /etc/machine-id', quiet => 1);
     my $redirection_status = $current_id eq $args{base_vm_machine_id} ? 0 : 1;
     return $redirection_status;
+}
+
+=head2 message_to_serial
+
+    message_to_serial($input_text);
+
+B<input_text>: string that will be printed in uppercase surrounded by '#' to make it more visible in output
+Prints a simple line on all consoles that highlights a point in output to make it more readable.
+Can be used for example to mark start and end of a function or a point in test so it is easier to find while debugging.
+
+=cut
+
+sub message_to_serial {
+    my ($input_text) = @_;
+    # make all lines equal length and fill
+    my $max_length = 120;
+    # leave some space for '#' symbol and dividing spaces
+    my $max_string_length = $max_length - 16;
+    croak 'No input text specified' unless $input_text;
+    croak "Input text is longer than" . $max_string_length . "characters. Make it shorter." unless length($input_text) < $max_string_length;
+
+    # max_length - length of the text - 4x2 dividing spaces
+    my $symbol_fill = ($max_length - length($input_text) - 8) / 2;
+    $input_text = "\"=\" x $symbol_fill, \" \" x 4, \"$input_text\", \" \" x 4, \"=\" x $symbol_fill";
+    my $line_fill = "\"=\" x " . $max_length;
+
+    # Before switching to 'log-console', remember which is the current one
+    my $original_console = is_serial_terminal() ? 'serial' : current_console();
+
+    # No need to swtich to serial if already being used
+    if ($original_console ne 'serial') {
+        select_serial_terminal();
+        set_serial_term_prompt();
+    }
+
+    my $skip_banner = '-n' if !script_run('whoami | grep root', quiet => 1);
+    my $cmd = "perl -e 'print $line_fill, \"\\n\", $input_text, \"\\n\", $line_fill, \"\\n\" ' | wall $skip_banner";
+
+    #script_run('stty -echo', quiet=>1, proceed_on_failure=>1); # This hides command being typed, only shows output.
+    script_run($cmd, 1, quiet => 1, proceed_on_failure=>1);
+    # switch back to original console
+    if ($original_console ne 'serial') {
+        select_console($original_console);
+        set_serial_term_prompt();
+    }
 }
 
 1;
