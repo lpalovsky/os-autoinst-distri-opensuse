@@ -94,6 +94,24 @@ sub deployment_dir {
     return $deployment_dir;
 }
 
+=head2 terraform_plugin_cache_dir
+
+    terraform_plugin_cache_dir([create=>1]);
+
+B<create>: Create directory if it does not exist.
+
+Returns terraform plugin cache directory path. This is specific for each test, located inside deployment directory.
+Optionally it can create directory if it does not exists.
+
+=cut
+
+sub terraform_plugin_cache_dir {
+    my (%args) = @_;
+    my $plugin_cache_dir = deployment_dir() . '/terraform_plugin_cache';
+    assert_script_run("mkdir -p $plugin_cache_dir") if $args{create};
+    return $plugin_cache_dir;
+}
+
 =head2 log_dir
 
     log_dir([create=>1]);
@@ -344,11 +362,14 @@ sub set_common_sdaf_os_env {
         # Deployer state is a file existing in LIBRARY storage account, default value is SDAF default.
 'export deployerState=' . get_var('SDAF_DEPLOYER_TFSTATE', '${deployer_env_code}-${region_code}-${deployer_vnet_code}-INFRASTRUCTURE.terraform.tfstate'),
         "export key_vault=$args{sdaf_key_vault}",
+        'export TF_PLUGIN_CACHE_DIR=' . terraform_plugin_cache_dir(), # do not create yet
         "\n"    # Newline is required otherwise "echo 'something' >> file" will just append content to the last line
     );
 
     create_sdaf_os_var_file(\@variables);
 }
+
+
 
 =head2 load_os_env_variables
 
@@ -688,6 +709,7 @@ sub prepare_sdaf_repo {
 
     assert_script_run("cd $deployment_dir");
     assert_script_run('mkdir -p ' . log_dir());
+    terraform_plugin_cache_dir(create=>'yes');
 
     foreach (@git_repos) {
         record_info('Clone repo', "Cloning SDAF repository: $_");
