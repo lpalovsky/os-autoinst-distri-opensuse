@@ -9,7 +9,7 @@ use parent 'sles4sap::microsoft_sdaf_basetest';
 use strict;
 use warnings;
 use testapi;
-use sles4sap::sdaf_library;
+use sles4sap::sdaf_deployment_library;
 use sles4sap::console_redirection;
 use serial_terminal qw(select_serial_terminal);
 
@@ -31,7 +31,7 @@ sub run {
     # Variables to share data between test modules.
     set_var('REDIRECT_DESTINATION_USER', $ssh_user);
     set_var('REDIRECT_DESTINATION_IP', $deployer_ip);    # IP addr to redirect console to
-    sdaf_prepare_ssh_keys(deployer_key_vault => get_required_var('SDAF_KEY_VAULT'));
+    sdaf_prepare_ssh_keys(key_vault => get_required_var('SDAF_KEY_VAULT'));
 
     redirection_init();
     serial_console_diag_banner('Module sdaf_redirect_console_to_deployer.pm : end');

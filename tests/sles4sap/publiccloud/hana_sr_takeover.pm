@@ -12,6 +12,7 @@ use testapi;
 use sles4sap_publiccloud;
 use publiccloud::utils;
 use serial_terminal 'select_serial_terminal';
+use Data::Dumper;
 
 sub test_flags {
     return {fatal => 1, publiccloud_multi_module => 1};
@@ -28,6 +29,9 @@ sub run {
     my $takeover_action = $run_args->{hana_test_definitions}{$test_name}{action};
     my $site_name = $run_args->{hana_test_definitions}{$test_name}{site_name};
     my $target_site = $run_args->{$site_name};
+    record_info('$self', Dumper($self));
+    record_info('$run_args', Dumper($run_args));
+
     die("Target site '$site_name' data is missing. This might indicate deployment issue.")
       unless $target_site;
     my $sbd_delay;

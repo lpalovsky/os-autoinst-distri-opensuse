@@ -1,0 +1,15 @@
+---
+name: microsoft_sdaf_hanasr
+description: |
+  Run HANASR tests on public cloud instances using SAP deployment automation project:
+    - deploy
+    - test
+    - destroy
+vars:
+  PUBLIC_CLOUD: '1'
+  TEST_CONTEXT: 'OpenQA::Test::RunArgs'
+schedule:
+  - boot/boot_to_desktop
+  - sles4sap/microsoft_sdaf/sdaf_redirect_console_to_deployer
+  - sles4sap/microsoft_sdaf/sdaf_sles4sap_publiccloud_lib_bridge
+  - sles4sap/publiccloud/hana_sr_schedule_primary_tests
