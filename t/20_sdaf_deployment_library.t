@@ -252,11 +252,10 @@ subtest '[serial_console_diag_banner] ' => sub {
     dies_ok { serial_console_diag_banner('exeCuTing deploYment' x 6) } 'Fail with string exceeds max number of characters';
 };
 
-subtest '[sdaf_prepare_ssh_keys]' => sub {
+subtest '[sdaf_prepare_ssh_key]' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     my $get_ssh_command;
-    my %private_key;
-    my %pubkey;
+    my $private_key;
     $ms_sdaf->redefine(script_run => sub { return 0; });
     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
     $ms_sdaf->redefine(script_output => sub {
@@ -268,20 +267,20 @@ LAB-SECE-DEP05-ssh
 "
     });
     $ms_sdaf->redefine(az_get_ssh_key => sub {
-            %private_key = @_ if grep /sshkey$/, @_;
-            %pubkey = @_ if grep /sshkey-pub$/, @_;
+            $private_key = $_[3] if grep /sshkey$/, @_;
     });
 
-    sdaf_prepare_ssh_keys(key_vault => 'LABSECEDEP05userDDF');
+    sdaf_prepare_ssh_key(key_vault => 'LABSECEDEP05userDDF', ssh_target_key_filename => 'blablabla');
     is $get_ssh_command, 'az keyvault secret list --vault-name LABSECEDEP05userDDF --query [].name --output tsv | grep sshkey',
       'Return correct command for retrieving private key';
-    is $pubkey{ssh_key_name}, 'LAB-SECE-DEP05-sshkey-pub', 'Public key';
-    is $private_key{ssh_key_name}, 'LAB-SECE-DEP05-sshkey', 'Private key';
+    is $private_key, 'LAB-SECE-DEP05-sshkey', 'Return correct private key name';
 
-    dies_ok { sdaf_prepare_ssh_keys() } 'Fail with missing deployer key vault argument';
+    dies_ok { sdaf_prepare_ssh_key(ssh_target_key_filename => 'blablabla') } 'Fail with missing argument: key_vault';
+    dies_ok { sdaf_prepare_ssh_key(key_vault => 'LABSECEDEP05userDDF') } 'Fail with missing argument: ssh_target_key_filename';
 
     $ms_sdaf->redefine(script_output => sub { return 1 });
-    dies_ok { sdaf_prepare_ssh_keys(key_vault => 'LABSECEDEP05userDDF') } 'Fail with not keyfile being found';
+    dies_ok { sdaf_prepare_ssh_key(key_vault => 'LABSECEDEP05userDDF', ssh_target_key_filename => 'blablabla') }
+        'Fail with not keyfile being found';
 };
 
 subtest '[sdaf_get_deployer_ip] Test passing behavior' => sub {
@@ -564,7 +563,7 @@ subtest '[sdaf_execute_playbook] Command execution' => sub {
     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
     $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/SDAF'; });
     $ms_sdaf->redefine(record_info => sub { return; });
-    #$ms_sdaf->redefine(get_config_root_path => sub { return '/tmp/SDAF/WORKSPACES/LANDSCAPE/LAB-SECE-SAP04-INFRASTRUCTURE/'; });
+    #$ms_sdaf->redefine(get_sdaf_config_path => sub { return '/tmp/SDAF/WORKSPACES/LANDSCAPE/LAB-SECE-SAP04-INFRASTRUCTURE/'; });
     $ms_sdaf->redefine(script_run => sub {
         $ansible_playbook_cmd = $_[0] if grep(/ansible-playbook/, $_[0]);
         return 0;
@@ -594,28 +593,28 @@ subtest '[sdaf_execute_playbook] Command execution' => sub {
     undef_variables();
 };
 
-subtest '[convert_region_short] Test conversion' => sub {
-    is convert_region_short('SECE'), 'swedencentral', 'Convert abbreviation "SECE" to "swedencentral"';
-    is convert_region_short('WUS2'), 'westus2', 'Convert abbreviation "WUS2" to "westus2"';
-    is convert_region_short('WEEU'), 'westeurope', 'Convert abbreviation "WEEU" to "westeurope"';
+subtest '[convert_region_to_long] Test conversion' => sub {
+    is convert_region_to_long('SECE'), 'swedencentral', 'Convert abbreviation "SECE" to "swedencentral"';
+    is convert_region_to_long('WUS2'), 'westus2', 'Convert abbreviation "WUS2" to "westus2"';
+    is convert_region_to_long('WEEU'), 'westeurope', 'Convert abbreviation "WEEU" to "westeurope"';
 };
 
-subtest '[convert_region_short] Test invalid input' => sub {
+subtest '[convert_region_to_long] Test invalid input' => sub {
     my @invalid_abbreviations = qw(aabc ASDF WUS5 WEEUU WWEEU WEEU.);
-    dies_ok { convert_region_short() } 'Croak with missing mandatory argument';
-    dies_ok { convert_region_short($_) } "Croak with invalid region abbreviation: $_" foreach @invalid_abbreviations;
+    dies_ok { convert_region_to_long() } 'Croak with missing mandatory argument';
+    dies_ok { convert_region_to_long($_) } "Croak with invalid region abbreviation: $_" foreach @invalid_abbreviations;
 };
 
-subtest '[convert_region_long] Test conversion' => sub {
-    is convert_region_long('swedencentral'), 'SECE', 'Convert full region name "swedencentral" to "SECE"';
-    is convert_region_long('westus2'), 'WUS2', 'Convert full region name "westus2" to "WUS2"';
-    is convert_region_long('westeurope'), 'WEEU', 'Convert full region name "westeurope" to "WEEU"';
+subtest '[convert_region_to_short] Test conversion' => sub {
+    is convert_region_to_short('swedencentral'), 'SECE', 'Convert full region name "swedencentral" to "SECE"';
+    is convert_region_to_short('westus2'), 'WUS2', 'Convert full region name "westus2" to "WUS2"';
+    is convert_region_to_short('westeurope'), 'WEEU', 'Convert full region name "westeurope" to "WEEU"';
 };
 
-subtest '[convert_region_long] Test invalid input' => sub {
+subtest '[convert_region_to_short] Test invalid input' => sub {
     my @invalid_region_names = qw(sweden central estus5 . estus);
-    dies_ok { convert_region_long() } 'Croak with missing mandatory argument';
-    dies_ok { convert_region_long($_) } "Croak with invalid region name: $_" foreach @invalid_region_names;
+    dies_ok { convert_region_to_short() } 'Croak with missing mandatory argument';
+    dies_ok { convert_region_to_short($_) } "Croak with invalid region name: $_" foreach @invalid_region_names;
 };
 
 subtest '[sdaf_get_keyvault_name] Test exceptions' => sub {
@@ -634,6 +633,55 @@ subtest '[sdaf_get_keyvault_name]' => sub {
     $ms_sdaf->redefine(script_output => sub { return 'Vault13'; });
 
     is sdaf_get_keyvault_name(resource_group=>'GECK'), 'Vault13', 'Pass with correct vault name being returned';
+};
+
+subtest '[sdaf_get_resource_group]' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    $ms_sdaf->redefine(get_current_job_id => sub { return '13'; });
+
+    is sdaf_get_resource_group(deployment_type=>'workload_zone'), 'SDAF-OpenQA-workload_zone-13', 'Test returned value for workload zone';
+    is sdaf_get_resource_group(deployment_type=>'sap_system'), 'SDAF-OpenQA-sap_system-13', 'Test returned value for sap system';
+};
+
+subtest '[sdaf_public_ip_name_gen]' => sub {
+    is sdaf_public_ip_name_gen(env_code=>'LAB', sdaf_region_code=>'SECE', vnet_code=>'SAP04'),
+        'LAB-SECE-SAP04-pip', 'Generate correct name for public IP resource';
+};
+
+subtest '[sdaf_public_ip_name_gen]' => sub {
+    my %arguments = (
+        env_code => 'LAB',
+        sdaf_region_code => 'SECE',
+        vnet_code => 'SAP04'
+    );
+
+    is sdaf_public_ip_name_gen(%arguments),
+        'LAB-SECE-SAP04-pip', 'Generate correct name for public IP resource';
+
+    foreach (keys(%arguments)) {
+        my $orig_value = $arguments{$_};
+        $arguments{$_} = undef;
+        dies_ok {sdaf_public_ip_name_gen(%arguments)} "Fail with missing argument: '$_'";
+        $arguments{$_} = $orig_value;
+    };
+};
+
+subtest '[sdaf_nat_gateway_name_gen]' => sub {
+    my %arguments = (
+        env_code => 'LAB',
+        sdaf_region_code => 'SECE',
+        vnet_code => 'SAP04'
+    );
+
+    is sdaf_nat_gateway_name_gen(%arguments),
+        'LAB-SECE-SAP04-natgw', 'Generate correct name for NAT gateway resource';
+
+    foreach (keys(%arguments)) {
+        my $orig_value = $arguments{$_};
+        $arguments{$_} = undef;
+        dies_ok {sdaf_nat_gateway_name_gen(%arguments)} "Fail with missing argument: '$_'";
+        $arguments{$_} = $orig_value;
+    };
 };
 
 done_testing;

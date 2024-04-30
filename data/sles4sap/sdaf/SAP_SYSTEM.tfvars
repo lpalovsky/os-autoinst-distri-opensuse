@@ -152,7 +152,7 @@ database_sid = "HDB"
 database_platform = "HANA"
 
 # Defines the number of database servers
-database_server_count = 2
+database_server_count = 1
 
 # database_high_availability is a boolean flag controlling if the database tier is deployed highly available (more than 1 node)
 database_high_availability = true
@@ -500,7 +500,7 @@ dns_a_records_for_secondary_names = true
 # NFS indicates that a custom solution is used for NFS
 NFS_provider = "NFS"
 # sapmnt_volume_size defines the size of the sapmnt volume in GB
-sapmnt_volume_size = 16
+sapmnt_volume_size = 32
 
 # azure_files_sapmnt_id defines the Resource identifier for Azure Files for NFS storage account for sapmnt
 #azure_files_sapmnt_id = ""

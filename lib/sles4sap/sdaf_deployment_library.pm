@@ -52,8 +52,10 @@ our @EXPORT = qw(
   deployment_dir
   env_variable_file
   az_login
+  az_get_ssh_key
+  sdaf_get_resource_group
   sdaf_get_keyvault_name
-  sdaf_prepare_ssh_keys
+  sdaf_prepare_ssh_key
   sdaf_get_deployer_ip
   serial_console_diag_banner
   set_common_sdaf_os_env
@@ -66,9 +68,11 @@ our @EXPORT = qw(
   load_os_env_variables
   sdaf_cleanup
   sdaf_execute_playbook
-  get_config_root_path
-  convert_region_short
-  convert_region_long
+  get_sdaf_config_path
+  convert_region_to_long
+  convert_region_to_short
+  sdaf_public_ip_name_gen
+  sdaf_nat_gateway_name_gen
 );
 
 # SDAF uses own internal 4 character abbreviations for PC region names
@@ -96,9 +100,9 @@ my %sdaf_region_matrix = (
     WUS3=>'westus3'
 );
 
-=head2 convert_region_short
+=head2 convert_region_to_long
 
-    convert_region_short($region);
+    convert_region_to_long($region);
 
 B<$region>: Region name abbreviation containing 4 uppercase alphanumeric characters
 
@@ -109,7 +113,7 @@ L<https://github.com/Azure/sap-automation/blob/3c5d0d882f5892ae2159e262062e29c2b
 
 =cut
 
-sub convert_region_short {
+sub convert_region_to_long {
     my ($region) = @_;
     croak 'Missing mandatory argument "$region"' unless $region;
     croak "Abbreviation must use 4 uppercase alphanumeric characters. Got: '$region'" unless $region =~ /^[A-Z0-9]{4}$/;
@@ -117,9 +121,9 @@ sub convert_region_short {
     return ($sdaf_region_matrix{$region});
 }
 
-=head2 convert_region_long
+=head2 convert_region_to_short
 
-    convert_region_long($region);
+    convert_region_to_short($region);
 
 B<$region>: Full region name. Can contain only lowercase alphanumeric characters.
 
@@ -130,7 +134,7 @@ L<https://github.com/Azure/sap-automation/blob/3c5d0d882f5892ae2159e262062e29c2b
 
 =cut
 
-sub convert_region_long {
+sub convert_region_to_short {
     my ($region) = @_;
     croak 'Missing mandatory argument "$region"' unless $region;
     croak "Abbreviation must use lowercase alphanumeric characters. Got: '$region'" unless $region =~ /^[a-z0-9]+$/;
@@ -419,7 +423,7 @@ sub set_common_sdaf_os_env {
     $args{env_code} //= get_required_var('SDAF_ENV_CODE');
     $args{deployer_vnet_code} //= get_required_var('SDAF_DEPLOYER_VNET_CODE');
     $args{workload_vnet_code} //= get_required_var('SDAF_WORKLOAD_VNET_CODE');
-    $args{sdaf_region_code} //= convert_region_long(get_required_var('PUBLIC_CLOUD_REGION'));
+    $args{sdaf_region_code} //= convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION'));
     $args{sap_sid} //= get_required_var('SAP_SID');
     $args{sdaf_tfstate_storage_account} //= get_required_var('SDAF_TFSTATE_STORAGE_ACCOUNT');
     $args{sdaf_key_vault} //= get_required_var('SDAF_KEY_VAULT');
@@ -471,6 +475,98 @@ sub load_os_env_variables {
     assert_script_run("source $args{env_variable_file}");
 }
 
+=head2 sdaf_get_resource_group
+
+    sdaf_get_resource_group(deployment_type=>$deployment_type);
+
+B<deployment_type>: Type of the deployment (workload_zone, sap_system, library... etc)
+
+Generates resource group name related to the test run. This is working only for workload_zone and sap_system.
+
+=cut
+
+sub sdaf_get_resource_group {
+    my (%args) = @_;
+    croak('Missing mandatory argument: $args{deployment_type}') unless $args{deployment_type};
+    croak("Argument '\$args{deployment_type}' value '$args{deployment_type}' is not supported. Use 'sap_system' or 'workload_zone'")
+        unless grep /^$args{deployment_type}$/, ('sap_system', 'workload_zone');
+    my $deployment_id = get_var('SDAF_DEPLOYMENT_ID') // get_current_job_id();
+    return("SDAF-OpenQA-$args{deployment_type}-$deployment_id");
+}
+
+=head2 sdaf_get_env_reg_vnet
+
+    sdaf_get_env_reg_vnet(
+        env_code=>$env_code,
+        sdaf_region_code=>$sdaf_region_code,
+        vnet_code=>$vnet_code
+    );
+
+B<env_code>:  SDAF parameter for environment code (for our purpose we can use 'LAB')
+
+B<sdaf_region_code>: SDAF parameter to choose PC region. Note SDAF is using internal abbreviations (SECE = swedencentral)
+
+B<vnet_code>: SDAF parameter for virtual network code. Library and deployer use different vnet than SUT env
+
+Generates and returns "<env_code>-<sdaf_region_code>-<vnet_code>" string which is used widely in SDAF naming convention.
+
+=cut
+
+sub sdaf_get_env_reg_vnet {
+    my (%args) = @_;
+    foreach ('env_code', 'vnet_code', 'sdaf_region_code') {
+        croak "Missing mandatory argument: '$_'" unless $args{$_};
+    }
+    return("$args{env_code}-$args{sdaf_region_code}-$args{vnet_code}");
+}
+
+=head2 sdaf_public_ip_name_gen
+
+    sdaf_public_ip_name_gen(
+        env_code=>$env_code,
+        sdaf_region_code=>$sdaf_region_code,
+        vnet_code=>$vnet_code
+    );
+
+B<env_code>:  SDAF parameter for environment code (for our purpose we can use 'LAB')
+
+B<sdaf_region_code>: SDAF parameter to choose PC region. Note SDAF is using internal abbreviations (SECE = swedencentral)
+
+B<vnet_code>: SDAF parameter for virtual network code. Library and deployer use different vnet than SUT env
+
+Generates public IP resource name related to the test run. This is working only for workload_zone and sap_system.
+
+=cut
+
+sub sdaf_public_ip_name_gen {
+    my (%args) = @_;
+    return(sdaf_get_env_reg_vnet(%args) . "-pip");
+}
+
+=head2 sdaf_nat_gateway_name_gen
+
+    sdaf_nat_gateway_name_gen(
+        env_code=>$env_code,
+        sdaf_region_code=>$sdaf_region_code,
+        vnet_code=>$vnet_code
+    );
+
+
+B<env_code>:  SDAF parameter for environment code (for our purpose we can use 'LAB')
+
+B<sdaf_region_code>: SDAF parameter to choose PC region. Note SDAF is using internal abbreviations (SECE = swedencentral)
+
+B<vnet_code>: SDAF parameter for virtual network code. Library and deployer use different vnet than SUT env
+
+Generates public IP resource name related to the test run. This is working only for workload_zone and sap_system.
+
+=cut
+
+sub sdaf_nat_gateway_name_gen {
+    my (%args) = @_;
+    return(sdaf_get_env_reg_vnet(%args) . "-natgw");
+}
+
 =head2 sdaf_get_keyvault_name
 
     sdaf_get_keyvault_name(resource_group=>$resource_group);
@@ -520,55 +616,54 @@ sub sdaf_get_deployer_ip {
     return $ip_addr;
 }
 
-=head2 sdaf_prepare_ssh_keys
+=head2 sdaf_prepare_ssh_key
 
-    sdaf_prepare_ssh_keys(key_vault=>$key_vault);
+    sdaf_prepare_ssh_key(key_vault=>$key_vault, ssh_target_key_filename=>$ssh_target_key_filename);
 
 B<key_vault>: Key vault name
 
-Retrieves public and private ssh key from DEPLOYER keyvault and sets up permissions.
+B<ssh_target_key_filename>: Target filename for SSH key
+
+Retrieves private ssh key from keyvault and sets up permissions.
 
 =cut
 
-sub sdaf_prepare_ssh_keys {
+sub sdaf_prepare_ssh_key {
     my (%args) = @_;
     croak 'Missing mandatory argument $args{key_vault}' unless $args{key_vault};
+    croak 'Missing mandatory argument $args{ssh_target_key_filename}' unless $args{ssh_target_key_filename};
     my $home = homedir();
-    my %ssh_keys;
     my $az_cmd_out = script_output(
         "az keyvault secret list --vault-name $args{key_vault} --query [].name --output tsv | grep sshkey");
-
+    my @ssh_keys;
     foreach (split("\n", $az_cmd_out)) {
-        $ssh_keys{id_rsa} = $_ if grep(/sshkey$/, $_);
-        $ssh_keys{'id_rsa.pub'} = $_ if grep(/sshkey-pub$/, $_);
+        push @ssh_keys, $_ if $_ =~ /sshkey$/;
     }
 
-    foreach ('id_rsa', 'id_rsa.pub') {
-        croak "Couldn't retrieve '$_' from keyvault" unless $ssh_keys{$_};
-    }
+    croak 'Couldn\'t retrieve ssh key from keyvault' unless @ssh_keys;
+    croak "Multiple ssh keys found:\n" . join("\n", @ssh_keys) unless @ssh_keys == 1;
 
     assert_script_run("mkdir -p $home/.ssh");
     assert_script_run("chmod 700 $home/.ssh");
-    for my $key_file (keys %ssh_keys) {
-        az_get_ssh_key(
-            key_vault => $args{key_vault},
-            ssh_key_name => $ssh_keys{$key_file},
-            ssh_key_filename => $key_file
-        );
-    }
-    assert_script_run("chmod 600 $home/.ssh/id_rsa");
-    assert_script_run("chmod 644 $home/.ssh/id_rsa.pub");
+
+    my $key_path = az_get_ssh_key(
+        key_vault => $args{key_vault},
+        ssh_source_key_name => $ssh_keys[0],
+        ssh_key_target_path => "$home/.ssh/$args{ssh_target_key_filename}"
+    );
+    assert_script_run("chmod 600 $home/.ssh/$args{ssh_target_key_filename}");
+    return "$home/.ssh/$args{ssh_target_key_filename}";
 }
 
 =head2 az_get_ssh_key
 
-    az_get_ssh_key(key_vault=$key_vault, ssh_key_name=$key_name, ssh_key_filename=$ssh_key_filename);
+    az_get_ssh_key(key_vault=$key_vault, ssh_source_key_name=$ssh_source_key_name, ssh_key_target_path=$ssh_key_target_path);
 
 B<key_vault>: Key vault name containing ssh keys
 
-B<ssh_key_name>: SSH key name residing on keyvault
+B<ssh_source_key_name>: SSH key name residing on keyvault
 
-B<ssh_key_filename>: Target filename for SSH key
+B<ssh_key_target_path>: Target path where the SSH key should be placed
 
 Retrieves SSH key from keyvault.
 
@@ -576,13 +671,12 @@ Retrieves SSH key from keyvault.
 
 sub az_get_ssh_key {
     my (%args) = @_;
-    my $home = homedir();
     my $cmd = join(' ',
         'az', 'keyvault', 'secret', 'show',
         '--vault-name', $args{key_vault},
-        '--name', $args{ssh_key_name},
+        '--name', $args{ssh_source_key_name},
         '--query', 'value',
-        '--output', 'tsv', '>', "$home/.ssh/$args{ssh_key_filename}");
+        '--output', 'tsv', '>', $args{ssh_key_target_path});
 
     my $rc = 1;
     my $retry = 3;
@@ -621,9 +715,9 @@ sub serial_console_diag_banner {
     script_run($input_text, quiet => 1, die_on_timeout => 0, timeout => 1);
 }
 
-=head2 get_config_root_path
+=head2 get_sdaf_config_path
 
-    get_config_root_path(
+    get_sdaf_config_path(
         deployment_type=>$deployment_type,
         env_code=>$env_code,
         sdaf_region_code=>$sdaf_region_code,
@@ -648,7 +742,7 @@ B<job_id>: Specify job id instead of using current one. Default: current job id
 
 =cut
 
-sub get_config_root_path {
+sub get_sdaf_config_path {
     my (%args) = @_;
     my @supported_types = ('workload_zone', 'sap_system', 'library', 'deployer');
     croak "Invalid deployment type: $args{deployment_type}\nCurrently supported ones are: " . join(', ', @supported_types)
@@ -698,8 +792,8 @@ B<sap_sid>: SDAF parameter for sap system ID. Required only for 'sap_system' dep
 sub get_tfvars_path {
     my (%args) = @_;
 
-    # All required checks are done by 'get_config_root_path()'
-    my $config_root_path = get_config_root_path(%args);
+    # All required checks are done by 'get_sdaf_config_path()'
+    my $config_root_path = get_sdaf_config_path(%args);
 
     my $job_id = get_current_job_id();
 
@@ -899,7 +993,7 @@ sub prepare_sdaf_project {
     $args{env_code} //= get_required_var('SDAF_ENV_CODE');
     $args{deployer_vnet_code} //= get_required_var('SDAF_DEPLOYER_VNET_CODE');
     $args{workload_vnet_code} //= get_required_var('SDAF_WORKLOAD_VNET_CODE');
-    $args{sdaf_region_code} //= convert_region_long(get_required_var('PUBLIC_CLOUD_REGION'));
+    $args{sdaf_region_code} //= convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION'));
     $args{sap_sid} //= get_required_var('SAP_SID');
 
     my $deployment_dir = deployment_dir(create => 'yes');
@@ -1080,13 +1174,13 @@ sub sdaf_execute_playbook {
     $args{timeout} //= 1800;
     $args{env_code} //= get_required_var('SDAF_ENV_CODE');
     $args{workload_vnet_code} //= get_required_var('SDAF_WORKLOAD_VNET_CODE');
-    $args{sdaf_region_code} //= convert_region_long(get_required_var('PUBLIC_CLOUD_REGION'));
+    $args{sdaf_region_code} //= convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION'));
     $args{sap_sid} //= get_required_var('SAP_SID');
 
     croak 'Missing mandatory argument "playbook_filename".' unless $args{playbook_filename};
 
     # $inventory_file_dir is common location for multiple config files
-    my $sdaf_config_root_dir = get_config_root_path(
+    my $sdaf_config_root_dir = get_sdaf_config_path(
         deployment_type=>'sap_system',
         vnet_code=>$args{vnet_code},
         env_code=>$args{env_code},

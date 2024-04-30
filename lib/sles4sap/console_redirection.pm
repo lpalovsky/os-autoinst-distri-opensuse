@@ -24,6 +24,7 @@ our @EXPORT = qw(
   disconnect_target_from_serial
   redirection_init
   check_serial_redirection
+  set_serial_term_prompt
 );
 
 my $ssh_opt = '-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=120';
@@ -202,6 +203,8 @@ B<ssh_user>: SSH login user for B<destination_ip> - default value is defined by 
 
 B<destination_ip>: Destination host IP - default value is defined by OpenQA parameter REDIRECT_DESTINATION_IP
 
+B<become_root>: Boolean. Switch to root using C<sudo su> after ssh login.
+
 Establishes ssh connection to destination host and redirects serial output to serial console on worker VM.
 This allows OpenQA access to command return codes and output for evaluation by standard API call.
 
@@ -227,7 +230,9 @@ sub connect_target_to_serial {
     set_var('AUTOINST_URL_HOSTNAME_ORIGINAL', get_var('AUTOINST_URL_HOSTNAME'));
     set_var('AUTOINST_URL_HOSTNAME', 'localhost');
 
-    enter_cmd "ssh $ssh_opt $args{ssh_user}\@$args{destination_ip} 2>&1 | tee -a /dev/$serialdev";
+    # option for using root user
+    my $use_root = $args{become_root} ? '\'sudo -i\'' : '';
+    enter_cmd "ssh -t $ssh_opt $args{ssh_user}\@$args{destination_ip} $use_root 2>&1 | tee -a /dev/$serialdev";
     handle_login_prompt($args{ssh_user});
     check_serial_redirection();
     record_info('Redirect ON', "Serial redirection established to: $args{destination_ip}");

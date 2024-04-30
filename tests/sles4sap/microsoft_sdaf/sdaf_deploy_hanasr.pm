@@ -28,7 +28,7 @@ sub run {
 
     sdaf_execute_playbook(playbook_filename=>'pb_get-sshkey.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
     sdaf_execute_playbook(playbook_filename=>'playbook_00_validate_parameters.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
-    #sdaf_execute_playbook(playbook_filename=>'playbook_01_os_base_config.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
+    sdaf_execute_playbook(playbook_filename=>'playbook_01_os_base_config.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
     #sdaf_execute_playbook(playbook_filename=>'playbook_02_os_sap_specific_config.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
     #sdaf_execute_playbook(playbook_filename=>'playbook_04_00_00_db_install.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
 

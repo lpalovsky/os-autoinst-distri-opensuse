@@ -84,6 +84,8 @@ public_network_access_enabled = true
 # place_delete_lock_on_resources, If defined, a delete lock will be placed on the key resources
 place_delete_lock_on_resources = false
 
+#register_endpoints_with_dns = true
+
 #########################################################################################
 #                                                                                       #
 #  Admin Subnet variables                                                               #

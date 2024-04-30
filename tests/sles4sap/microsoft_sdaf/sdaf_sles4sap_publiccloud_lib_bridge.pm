@@ -45,19 +45,45 @@ sub run {
     set_var('QESAP_NO_CLEANUP_ON_FAILURE', '1');
     select_serial_terminal();
 
+    # connect_target_to_serial(become_root=>'yes');
+    connect_target_to_serial();
+
     my $deployment_id = find_deployment_id();
     my $env_variables = env_variable_file(job_id=>$deployment_id);
+    my $sap_sid = get_required_var('SAP_SID');
 
-    connect_target_to_serial();
-    load_os_env_variables(env_variable_file=>$env_variables);
+    load_os_env_variables(
+        env_variable_file=>$env_variables,
+    );
 
+    my $sdaf_config_path =  get_sdaf_config_path(
+        deployment_type     => 'sap_system',
+        sap_sid             => $sap_sid,
+        env_code            => get_required_var('SDAF_ENV_CODE'),
+        vnet_code           => get_required_var('SDAF_WORKLOAD_VNET_CODE'),
+        sdaf_region_code    => convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION')), # converts full region name to SDAF abbreviation
+        job_id              => find_deployment_id()
+    );
+
+    my $inventory_data = read_inventory_file("$sdaf_config_path/$sap_sid\_hosts.yaml");
+    record_info('Inventory', Dumper($inventory_data));
+
+    # create instances class
     my $provider = $self->provider_factory();
-    my $instances = instance_data_from_inventory(provider=>$provider);
 
+    # provider_factory adds default ssh key location and needs to be overridden with custom one
+    $provider->{ssh_key} = "$sdaf_config_path/sshkey";
+
+    my $instances = instance_data_from_inventory(
+        provider_data=>$provider,
+        sut_ssh_key_path=>"$sdaf_config_path/sshkey", # SDAF default path
+        inventory_content=>$inventory_data
+    );
+    record_info('instances', Dumper($instances));
     record_info('$self', Dumper($self));
     record_info('$run_args', Dumper($run_args));
 
-    my $site_letter = 'a';
+    my $site_letter = 'a'; # this is a letter appended after each site name
     for my $instance (@$instances) {
         $self->{my_instance} = $instance;
         $self->run_cmd(cmd=>'hostname', runas=>'azureadm', quiet=>1);
@@ -69,12 +95,9 @@ sub run {
     $self->{instances} = $run_args->{instances} = $instances;
     $self->{provider} = $run_args->{my_provider} = $provider;
 
-    disconnect_target_from_serial();
+    assert_script_run('export PS1=\'\[\]\u@\h:\w #\[\] \'');
+    #disconnect_target_from_serial();
 
-    # Get ssh keys from SUT and setup SSH proxy jump
-    # This will allow direct ssh login from worker WM to SUT via jumphost
-    ssh_config_add_instances(instances=>$instances, jump_host=>sdaf_get_deployer_ip());
-    record_info('ssh conf', script_output("cat ~/.ssh/config"));
 }
 
 1;
