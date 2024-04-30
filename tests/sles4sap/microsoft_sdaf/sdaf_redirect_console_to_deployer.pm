@@ -31,7 +31,7 @@ sub run {
     # Variables to share data between test modules.
     set_var('REDIRECT_DESTINATION_USER', $ssh_user);
     set_var('REDIRECT_DESTINATION_IP', $deployer_ip);    # IP addr to redirect console to
-    sdaf_prepare_ssh_keys(key_vault => get_required_var('SDAF_KEY_VAULT'));
+    sdaf_prepare_ssh_key(key_vault => get_required_var('SDAF_KEY_VAULT'), ssh_target_key_filename=>'id_rsa');
 
     redirection_init();
     serial_console_diag_banner('Module sdaf_redirect_console_to_deployer.pm : end');

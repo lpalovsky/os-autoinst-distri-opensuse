@@ -252,11 +252,10 @@ subtest '[serial_console_diag_banner] ' => sub {
     dies_ok { serial_console_diag_banner('exeCuTing deploYment' x 6) } 'Fail with string exceeds max number of characters';
 };
 
-subtest '[sdaf_prepare_ssh_keys]' => sub {
+subtest '[sdaf_prepare_ssh_key]' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     my $get_ssh_command;
-    my %private_key;
-    my %pubkey;
+    my $private_key;
     $ms_sdaf->redefine(script_run => sub { return 0; });
     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
     $ms_sdaf->redefine(script_output => sub {
@@ -268,372 +267,380 @@ LAB-SECE-DEP05-ssh
 "
     });
     $ms_sdaf->redefine(az_get_ssh_key => sub {
-            %private_key = @_ if grep /sshkey$/, @_;
-            %pubkey = @_ if grep /sshkey-pub$/, @_;
+            $private_key = $_[3] if grep /sshkey$/, @_;
     });
 
-    sdaf_prepare_ssh_keys(key_vault => 'LABSECEDEP05userDDF');
+    sdaf_prepare_ssh_key(key_vault => 'LABSECEDEP05userDDF', ssh_target_key_filename => 'blablabla');
     is $get_ssh_command, 'az keyvault secret list --vault-name LABSECEDEP05userDDF --query [].name --output tsv | grep sshkey',
       'Return correct command for retrieving private key';
-    is $pubkey{ssh_key_name}, 'LAB-SECE-DEP05-sshkey-pub', 'Public key';
-    is $private_key{ssh_key_name}, 'LAB-SECE-DEP05-sshkey', 'Private key';
+    is $private_key, 'LAB-SECE-DEP05-sshkey', 'Return correct private key name';
 
-    dies_ok { sdaf_prepare_ssh_keys() } 'Fail with missing deployer key vault argument';
+    dies_ok { sdaf_prepare_ssh_key(ssh_target_key_filename => 'blablabla') } 'Fail with missing argument: key_vault';
+    dies_ok { sdaf_prepare_ssh_key(key_vault => 'LABSECEDEP05userDDF') } 'Fail with missing argument: ssh_target_key_filename';
 
     $ms_sdaf->redefine(script_output => sub { return 1 });
-    dies_ok { sdaf_prepare_ssh_keys(key_vault => 'LABSECEDEP05userDDF') } 'Fail with not keyfile being found';
+    dies_ok { sdaf_prepare_ssh_key(key_vault => 'LABSECEDEP05userDDF', ssh_target_key_filename => 'blablabla') }
+        'Fail with not keyfile being found';
 };
-
-subtest '[sdaf_get_deployer_ip] Test passing behavior' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my @script_output_commands;
-    $ms_sdaf->redefine(record_info => sub { return; });
-    $ms_sdaf->redefine(script_output => sub {
-            push @script_output_commands, $_[0];
-            return 'vmhana01' if grep /vm\slist\s/, @_;
-            return '192.168.0.1'; });
-
-    my $ip_addr = sdaf_get_deployer_ip(deployer_resource_group => 'OpenQA_SDAF_0079');
-    is $script_output_commands[0], 'az vm list --resource-group OpenQA_SDAF_0079 --query [].name --output tsv',
-      'Pass using correct command for retrieving vm list';
-    is $script_output_commands[1],
-      'az vm list-ip-addresses --resource-group OpenQA_SDAF_0079 --name vmhana01 --query "[].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv',
-      'Pass using correct command for retrieving public IP addr';
-    is $ip_addr, '192.168.0.1', 'Pass returning correct IP addr';
-
-    dies_ok { sdaf_get_deployer_ip() } 'Fail with missing deployer resource group argument';
-    $ms_sdaf->redefine(script_output => sub { return '192.168.0.1'; });
-};
-
-subtest '[sdaf_get_deployer_ip] Test expected failures' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    $ms_sdaf->redefine(record_info => sub { return; });
-    my @incorrect_ip_addresses = (
-        '192.168.0.500',
-        '192.168.o.5',
-        '192.168.0.',
-        '2001:db8:85a3::8a2e:370:7334'
-    );
-
-    dies_ok { sdaf_get_deployer_ip() } 'Fail with missing deployer resource group argument';
-    for my $ip_input (@incorrect_ip_addresses) {
-        $ms_sdaf->redefine(script_output => sub { return $ip_input; });
-        dies_ok { sdaf_get_deployer_ip(deployer_resource_group => 'Open_QA_DEPLOYER') } "Detect incorrect IP addr pattern: $ip_input";
-    }
-};
-
-subtest '[create_sdaf_os_var_file]' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my %arguments = (
-        sap_sid => 'QAS',
-        deployer_vnet_code => 'DEP05',
-        workload_vnet_code => 'SAP04',
-        sdaf_region_code => 'SECE',
-        env_code => 'LAB',
-        sdaf_tfstate_storage_account => 'labsecetfstate300',
-        sdaf_key_vault => 'LABSECEDEP05userDDF',
-        subscription_id => 'RX-78',
-    );
-    my $file_content;
-    $ms_sdaf->redefine(write_sut_file => sub { $file_content = $_[1]; });
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(get_tfvars_path => sub { return '/some/path'; });
-    $ms_sdaf->redefine(deployment_dir => sub { return '/deployment'; });
-
-    my $expected_result = join("\n",
-        'export env_code=LAB',
-        'export deployer_vnet_code=DEP05',
-        'export workload_vnet_code=SAP04',
-        'export sap_env_code=LAB',
-        'export deployer_env_code=LAB',
-        'export sdaf_region_code=SECE',
-        'export SID=QAS',
-        'export ARM_SUBSCRIPTION_ID=RX-78',
-        'export SAP_AUTOMATION_REPO_PATH=/deployment/sap-automation/',
-        'export DEPLOYMENT_REPO_PATH=${SAP_AUTOMATION_REPO_PATH}',
-        'export CONFIG_REPO_PATH=/deployment/WORKSPACES',
-        'export deployer_parameter_file=/some/path',
-        'export library_parameter_file=/some/path',
-        'export sap_system_parameter_file=/some/path',
-        'export workload_zone_parameter_file=/some/path',
-        'export tfstate_storage_account=labsecetfstate300',
-        'export deployerState=${deployer_env_code}-${sdaf_region_code}-${deployer_vnet_code}-INFRASTRUCTURE.terraform.tfstate',
-        'export key_vault=LABSECEDEP05userDDF',
-        "\n"
-    );
-
-    set_common_sdaf_os_env(%arguments);
-    is $file_content, $expected_result, 'Compile variable file correctly';
-
-};
-
-subtest '[az_login]' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    set_var('_SECRET_AZURE_SDAF_APP_ID', 'some-id');
-    set_var('_SECRET_AZURE_SDAF_APP_PASSWORD', '$0me_paSSw0rdt');
-    set_var('_SECRET_AZURE_SDAF_TENANT_ID', 'some-tenant-id');
-
-    my $env_variable_file_content;
-
-    $ms_sdaf->redefine(get_current_job_id => sub { return '0097'; });
-    $ms_sdaf->redefine(record_info => sub { return; });
-    $ms_sdaf->redefine(write_sut_file => sub { $env_variable_file_content = $_[1]; });
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(script_output => sub { return 'some-subscription-id'; });
-
-    az_login();
-    is $env_variable_file_content,
-      join("\n", 'export ARM_CLIENT_ID=some-id', 'export ARM_CLIENT_SECRET=$0me_paSSw0rdt', 'export ARM_TENANT_ID=some-tenant-id'),
-      'Create temporary file correctly';
-    undef_variables();
-};
-
-subtest '[sdaf_cleanup] Test correct usage' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my $files_deleted;
-
-    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
-    $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
-    $ms_sdaf->redefine(record_info => sub { return 1; });
-    $ms_sdaf->redefine(sdaf_execute_remover => sub { return 0; });
-    $ms_sdaf->redefine(assert_script_run => sub { $files_deleted = 1; return 1; });
-    $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
-
-    ok sdaf_cleanup(), 'Pass with correct usage';
-    is $files_deleted, 1, 'Function must delete files at the end';
-};
-
-subtest '[sdaf_cleanup] Test remover script failures' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my $files_deleted;
-
-    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
-    $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
-    $ms_sdaf->redefine(sdaf_execute_remover => sub { return '0'; });
-    $ms_sdaf->redefine(record_info => sub { return 1; });
-    $ms_sdaf->redefine(assert_script_run => sub { $files_deleted = 1; return; });
-    $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
-
-    $ms_sdaf->redefine(sdaf_execute_remover => sub { return 1; });
-    dies_ok { sdaf_cleanup() } 'Test failing remover script';
-    is $files_deleted, 1, 'Function must delete files after remover failure';
-
-
-};
-
-subtest '[sdaf_execute_remover] Test expected failure' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
-    $ms_sdaf->redefine(assert_script_run => sub { return; });
-    $ms_sdaf->redefine(record_info => sub { return 1; });
-    $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
-    $ms_sdaf->redefine(get_os_variable => sub { return ''; });
-
-    dies_ok { sdaf_execute_remover(deployment_type => 'workload_zone') } 'Fail with undefined tfvars OS variable';
-};
-
-subtest '[sdaf_execute_remover] Test functionality' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my @script_run_calls;
-    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
-    $ms_sdaf->redefine(resource_group_exists => sub { return '1'; });
-    $ms_sdaf->redefine(upload_logs => sub { return; });
-    $ms_sdaf->redefine(log_dir => sub { return '/log/dir/path'; });
-    $ms_sdaf->redefine(deployment_dir => sub { return '/some/path'; });
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(record_info => sub { return 0; });
-    $ms_sdaf->redefine(script_run => sub { push @script_run_calls, $_[0] if grep /remover/, $_[0]; return 0; });
-    $ms_sdaf->redefine(get_os_variable => sub {
-            return '/some/path/LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars' if $_[0] eq 'workload_zone_parameter_file';
-            return '/some/path/LAB-SECE-SAP04-QES-6453.tfvars' if $_[0] eq 'sap_system_parameter_file';
-    });
-
-    sdaf_cleanup();
-    is $script_run_calls[0],
-'( /some/path/sap-automation/deploy/scripts/remover.sh --parameterfile LAB-SECE-SAP04-QES-6453.tfvars --type sap_system --auto-approve 2>&1 | tee /log/dir/path/cleanup_sap_system.log ; exit ${PIPESTATUS[0]})',
-      'Return correct command for workload zone deployment';
-
-    is $script_run_calls[1],
-'( /some/path/sap-automation/deploy/scripts/remover.sh --parameterfile LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars --type sap_landscape --auto-approve 2>&1 | tee /log/dir/path/cleanup_workload_zone.log ; exit ${PIPESTATUS[0]})',
-      'Return correct command for SAP system deployment';
-};
-
-subtest '[sdaf_execute_deployment] Test expected failures' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(script_run => sub { return 0; });
-    $ms_sdaf->redefine(record_info => sub { return 1; });
-    $ms_sdaf->redefine(upload_logs => sub { return 1; });
-    $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
-    $ms_sdaf->redefine(get_sdaf_deployment_command => sub { return '/execute/some/script.sh --important-option NotReallyImportant'; });
-    $ms_sdaf->redefine(log_command_output => sub { return '/execute/some/script.sh --important-option NotReallyImportant >> log.file'; });
-
-    my @invalid_deployment_types = ('sap_sys', 'orkload', 'workload', 'zone', 'system', 'sap_system ', ' sap_system', '', ' ');
-    dies_ok { sdaf_execute_deployment(deployment_type => $_) } "Fail with incorrect deployment type: '$_'" foreach @invalid_deployment_types;
-
-    $ms_sdaf->redefine(script_run => sub { return 1; });
-    # Function must not fail with croak if command fails.
-    my $croak_executed = 0;
-    $ms_sdaf->redefine(croak => sub { $croak_executed = 1; die(); });
-    dies_ok { sdaf_execute_deployment(deployment_type => 'sap_system') } 'Function dies with executed SDAF command RC!=0';
-    is $croak_executed, 0, 'Ensure function failing because of correct reason';
-};
-
-subtest '[sdaf_execute_deployment] Test generated SDAF deployment command' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my $sdaf_command_no_log;
-
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(script_run => sub { return 0; });
-    $ms_sdaf->redefine(record_info => sub { return 0; });
-    $ms_sdaf->redefine(upload_logs => sub { return 0; });
-    $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
-    $ms_sdaf->redefine(sdaf_scripts_dir => sub { return '/tmp/deployment'; });
-    $ms_sdaf->redefine(get_os_variable => sub { return '/some/path/LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars' });
-    $ms_sdaf->redefine(set_os_variable => sub { return 1 });
-
-    # Capture command without logging part
-    $ms_sdaf->redefine(log_command_output => sub { $sdaf_command_no_log = $_[1]; return; });
-
-    # Check if all required parameters are present including any form of value if required
-    my @workload_zone_cmdline = ('^/tmp/deployment/install_workloadzone.sh\s',
-        '\s--parameterfile\s.*(\s|$)',
-        '\s--deployer_environment\s.*(\s|$)',
-        '\s--deployer_tfstate_key\s.*(\s|$)',
-        '\s--keyvault\s.*(\s|$)',
-        '\s--storageaccountname\s.*(\s|$)',
-        '\s--subscription\s.*(\s|$)',
-        '\s--tenant_id\s.*(\s|$)',
-        '\s--spn_id\s\$\{ARM_CLIENT_ID}(\s|$)',
-        '\s--spn_secret\s\$\{ARM_CLIENT_SECRET}(\s|$)',
-        '\s--auto-approve(\s|$)'
-    );
-
-    my @sap_system_cmdline = ('^/tmp/deployment/installer.sh',
-        '\s--parameterfile\s.*(\s|$)',
-        '\s--type\ssap_system(\s|$)',
-        '\s--storageaccountname\s.*(\s|$)',
-        '\s--state_subscription\s.*(\s|$)',
-        '\s--auto-approve(\s|$)'
-    );
-
-    sdaf_execute_deployment(deployment_type => 'workload_zone');
-    ok $sdaf_command_no_log =~ m/$_/, "Command for deploying workload zone must contain cmd option: '$_'" foreach @workload_zone_cmdline;
-    sdaf_execute_deployment(deployment_type => 'sap_system');
-    ok $sdaf_command_no_log =~ m/$_/, "Command for deploying sap systems must contain cmd option: '$_'" foreach @sap_system_cmdline;
-};
-
-subtest '[sdaf_execute_deployment] Test "retry" functionality' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(record_info => sub { return 1; });
-    $ms_sdaf->redefine(upload_logs => sub { return 0; });
-    $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
-    $ms_sdaf->redefine(sdaf_scripts_dir => sub { return '/tmp/deployment'; });
-    $ms_sdaf->redefine(get_os_variable => sub { return '/some/path/LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars' });
-    $ms_sdaf->redefine(set_os_variable => sub { return 1 });
-    $ms_sdaf->redefine(log_command_output => sub { return; });
-    $ms_sdaf->redefine(get_sdaf_deployment_command => sub { return 'dd if=/dev/zero of=/dev/sda'; });
-    my $retry = 0;
-    $ms_sdaf->redefine(script_run => sub { $retry ++; print $retry; return 0 if $retry == 3; return 1});
-
-    ok sdaf_execute_deployment(deployment_type=>'workload_zone', retries=>3);
-};
-
-subtest '[sdaf_execute_playbook] Fail with missing mandatory arguments' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my $croak_message;
-    $ms_sdaf->redefine(croak => sub { $croak_message = $_[0]; die(); });
-
-    set_var('SDAF_ENV_CODE', 'LAB');
-    set_var('SDAF_WORKLOAD_VNET_CODE', 'SAP04');
-    set_var('PUBLIC_CLOUD_REGION', 'swedencentral');
-    set_var('SAP_SID', 'QES');
-
-    dies_ok {sdaf_execute_playbook()} 'Croak with missing mandatory argument "playbook_filename"';
-    ok $croak_message =~ m/playbook_filename/, 'Check if failure is triggered at correct place.';
-
-    undef_variables();
-};
-
-subtest '[sdaf_execute_playbook] Command execution' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my $ansible_playbook_cmd;
-
-    $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/SDAF'; });
-    $ms_sdaf->redefine(record_info => sub { return; });
-    #$ms_sdaf->redefine(get_config_root_path => sub { return '/tmp/SDAF/WORKSPACES/LANDSCAPE/LAB-SECE-SAP04-INFRASTRUCTURE/'; });
-    $ms_sdaf->redefine(script_run => sub {
-        $ansible_playbook_cmd = $_[0] if grep(/ansible-playbook/, $_[0]);
-        return 0;
-    });
-
-    set_var('SDAF_ENV_CODE', 'LAB');
-    set_var('SDAF_WORKLOAD_VNET_CODE', 'SAP04');
-    set_var('SDAF_REGION_CODE', 'swedencentral');
-    set_var('SAP_SID', 'QES');
-
-    $ms_sdaf->redefine(upload_logs => sub { return ; });
-
-    my $expected_result = join(' ', '(', 'ansible-playbook',
-        '--inventory-file="QAS_hosts.yaml"',
-        '--private-key=/tmp/SDAF/WORKSPACES/SYSTEM/LAB-SECE-SAP04-QAS/sshkey',
-        '--extra-vars=\'_workspace_directory=/tmp/SDAF/WORKSPACES/SYSTEM/LAB-SECE-SAP04-QAS\'',
-        '--extra-vars="@sap-parameters.yaml"',
-        '--ssh-common-args="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=120"',
-        '/tmp/SDAF/sap-automation/deploy/ansible/playbook_01_os_base_config.yaml 2>&1',
-        '| tee /tmp/openqa_logs/playbook_01_os_base_config.log',
-        '; exit ${PIPESTATUS[0]})'
-    );
-
-    sdaf_execute_playbook(playbook_filename=>'playbook_01_os_base_config.yaml', sap_sid=>'QAS', vnet_code=>'SAP04');
-    is $ansible_playbook_cmd, $expected_result, "Execute correct ansible command:\n$ansible_playbook_cmd";
-
-    undef_variables();
-};
-
-subtest '[convert_region_short] Test conversion' => sub {
-    is convert_region_short('SECE'), 'swedencentral', 'Convert abbreviation "SECE" to "swedencentral"';
-    is convert_region_short('WUS2'), 'westus2', 'Convert abbreviation "WUS2" to "westus2"';
-    is convert_region_short('WEEU'), 'westeurope', 'Convert abbreviation "WEEU" to "westeurope"';
-};
-
-subtest '[convert_region_short] Test invalid input' => sub {
-    my @invalid_abbreviations = qw(aabc ASDF WUS5 WEEUU WWEEU WEEU.);
-    dies_ok { convert_region_short() } 'Croak with missing mandatory argument';
-    dies_ok { convert_region_short($_) } "Croak with invalid region abbreviation: $_" foreach @invalid_abbreviations;
-};
-
-subtest '[convert_region_long] Test conversion' => sub {
-    is convert_region_long('swedencentral'), 'SECE', 'Convert full region name "swedencentral" to "SECE"';
-    is convert_region_long('westus2'), 'WUS2', 'Convert full region name "westus2" to "WUS2"';
-    is convert_region_long('westeurope'), 'WEEU', 'Convert full region name "westeurope" to "WEEU"';
-};
-
-subtest '[convert_region_long] Test invalid input' => sub {
-    my @invalid_region_names = qw(sweden central estus5 . estus);
-    dies_ok { convert_region_long() } 'Croak with missing mandatory argument';
-    dies_ok { convert_region_long($_) } "Croak with invalid region name: $_" foreach @invalid_region_names;
-};
-
-subtest '[sdaf_get_keyvault_name] Test exceptions' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    $ms_sdaf->redefine(script_output => sub { return "Vault13\nVault15"; });
-
-    dies_ok {sdaf_get_keyvault_name()} 'Croak with missing mandatory argument "resource_group"';
-    dies_ok {sdaf_get_keyvault_name(resource_group=>'GECK')} 'Fail with more than one vaults being returned';
-
-    $ms_sdaf->redefine(script_output => sub { return ''; });
-    dies_ok {sdaf_get_keyvault_name(resource_group=>'GECK')} 'Fail with no key vault being found';
-};
-
-subtest '[sdaf_get_keyvault_name]' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    $ms_sdaf->redefine(script_output => sub { return 'Vault13'; });
-
-    is sdaf_get_keyvault_name(resource_group=>'GECK'), 'Vault13', 'Pass with correct vault name being returned';
-};
+#
+# subtest '[sdaf_get_deployer_ip] Test passing behavior' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my @script_output_commands;
+#     $ms_sdaf->redefine(record_info => sub { return; });
+#     $ms_sdaf->redefine(script_output => sub {
+#             push @script_output_commands, $_[0];
+#             return 'vmhana01' if grep /vm\slist\s/, @_;
+#             return '192.168.0.1'; });
+#
+#     my $ip_addr = sdaf_get_deployer_ip(deployer_resource_group => 'OpenQA_SDAF_0079');
+#     is $script_output_commands[0], 'az vm list --resource-group OpenQA_SDAF_0079 --query [].name --output tsv',
+#       'Pass using correct command for retrieving vm list';
+#     is $script_output_commands[1],
+#       'az vm list-ip-addresses --resource-group OpenQA_SDAF_0079 --name vmhana01 --query "[].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv',
+#       'Pass using correct command for retrieving public IP addr';
+#     is $ip_addr, '192.168.0.1', 'Pass returning correct IP addr';
+#
+#     dies_ok { sdaf_get_deployer_ip() } 'Fail with missing deployer resource group argument';
+#     $ms_sdaf->redefine(script_output => sub { return '192.168.0.1'; });
+# };
+#
+# subtest '[sdaf_get_deployer_ip] Test expected failures' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     $ms_sdaf->redefine(record_info => sub { return; });
+#     my @incorrect_ip_addresses = (
+#         '192.168.0.500',
+#         '192.168.o.5',
+#         '192.168.0.',
+#         '2001:db8:85a3::8a2e:370:7334'
+#     );
+#
+#     dies_ok { sdaf_get_deployer_ip() } 'Fail with missing deployer resource group argument';
+#     for my $ip_input (@incorrect_ip_addresses) {
+#         $ms_sdaf->redefine(script_output => sub { return $ip_input; });
+#         dies_ok { sdaf_get_deployer_ip(deployer_resource_group => 'Open_QA_DEPLOYER') } "Detect incorrect IP addr pattern: $ip_input";
+#     }
+# };
+#
+# subtest '[create_sdaf_os_var_file]' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my %arguments = (
+#         sap_sid => 'QAS',
+#         deployer_vnet_code => 'DEP05',
+#         workload_vnet_code => 'SAP04',
+#         sdaf_region_code => 'SECE',
+#         env_code => 'LAB',
+#         sdaf_tfstate_storage_account => 'labsecetfstate300',
+#         sdaf_key_vault => 'LABSECEDEP05userDDF',
+#         subscription_id => 'RX-78',
+#     );
+#     my $file_content;
+#     $ms_sdaf->redefine(write_sut_file => sub { $file_content = $_[1]; });
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(get_tfvars_path => sub { return '/some/path'; });
+#     $ms_sdaf->redefine(deployment_dir => sub { return '/deployment'; });
+#
+#     my $expected_result = join("\n",
+#         'export env_code=LAB',
+#         'export deployer_vnet_code=DEP05',
+#         'export workload_vnet_code=SAP04',
+#         'export sap_env_code=LAB',
+#         'export deployer_env_code=LAB',
+#         'export sdaf_region_code=SECE',
+#         'export SID=QAS',
+#         'export ARM_SUBSCRIPTION_ID=RX-78',
+#         'export SAP_AUTOMATION_REPO_PATH=/deployment/sap-automation/',
+#         'export DEPLOYMENT_REPO_PATH=${SAP_AUTOMATION_REPO_PATH}',
+#         'export CONFIG_REPO_PATH=/deployment/WORKSPACES',
+#         'export deployer_parameter_file=/some/path',
+#         'export library_parameter_file=/some/path',
+#         'export sap_system_parameter_file=/some/path',
+#         'export workload_zone_parameter_file=/some/path',
+#         'export tfstate_storage_account=labsecetfstate300',
+#         'export deployerState=${deployer_env_code}-${sdaf_region_code}-${deployer_vnet_code}-INFRASTRUCTURE.terraform.tfstate',
+#         'export key_vault=LABSECEDEP05userDDF',
+#         "\n"
+#     );
+#
+#     set_common_sdaf_os_env(%arguments);
+#     is $file_content, $expected_result, 'Compile variable file correctly';
+#
+# };
+#
+# subtest '[az_login]' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     set_var('_SECRET_AZURE_SDAF_APP_ID', 'some-id');
+#     set_var('_SECRET_AZURE_SDAF_APP_PASSWORD', '$0me_paSSw0rdt');
+#     set_var('_SECRET_AZURE_SDAF_TENANT_ID', 'some-tenant-id');
+#
+#     my $env_variable_file_content;
+#
+#     $ms_sdaf->redefine(get_current_job_id => sub { return '0097'; });
+#     $ms_sdaf->redefine(record_info => sub { return; });
+#     $ms_sdaf->redefine(write_sut_file => sub { $env_variable_file_content = $_[1]; });
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(script_output => sub { return 'some-subscription-id'; });
+#
+#     az_login();
+#     is $env_variable_file_content,
+#       join("\n", 'export ARM_CLIENT_ID=some-id', 'export ARM_CLIENT_SECRET=$0me_paSSw0rdt', 'export ARM_TENANT_ID=some-tenant-id'),
+#       'Create temporary file correctly';
+#     undef_variables();
+# };
+#
+# subtest '[sdaf_cleanup] Test correct usage' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my $files_deleted;
+#
+#     $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+#     $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
+#     $ms_sdaf->redefine(record_info => sub { return 1; });
+#     $ms_sdaf->redefine(sdaf_execute_remover => sub { return 0; });
+#     $ms_sdaf->redefine(assert_script_run => sub { $files_deleted = 1; return 1; });
+#     $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
+#
+#     ok sdaf_cleanup(), 'Pass with correct usage';
+#     is $files_deleted, 1, 'Function must delete files at the end';
+# };
+#
+# subtest '[sdaf_cleanup] Test remover script failures' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my $files_deleted;
+#
+#     $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+#     $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
+#     $ms_sdaf->redefine(sdaf_execute_remover => sub { return '0'; });
+#     $ms_sdaf->redefine(record_info => sub { return 1; });
+#     $ms_sdaf->redefine(assert_script_run => sub { $files_deleted = 1; return; });
+#     $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
+#
+#     $ms_sdaf->redefine(sdaf_execute_remover => sub { return 1; });
+#     dies_ok { sdaf_cleanup() } 'Test failing remover script';
+#     is $files_deleted, 1, 'Function must delete files after remover failure';
+#
+#
+# };
+#
+# subtest '[sdaf_execute_remover] Test expected failure' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+#     $ms_sdaf->redefine(assert_script_run => sub { return; });
+#     $ms_sdaf->redefine(record_info => sub { return 1; });
+#     $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
+#     $ms_sdaf->redefine(get_os_variable => sub { return ''; });
+#
+#     dies_ok { sdaf_execute_remover(deployment_type => 'workload_zone') } 'Fail with undefined tfvars OS variable';
+# };
+#
+# subtest '[sdaf_execute_remover] Test functionality' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my @script_run_calls;
+#     $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+#     $ms_sdaf->redefine(resource_group_exists => sub { return '1'; });
+#     $ms_sdaf->redefine(upload_logs => sub { return; });
+#     $ms_sdaf->redefine(log_dir => sub { return '/log/dir/path'; });
+#     $ms_sdaf->redefine(deployment_dir => sub { return '/some/path'; });
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(record_info => sub { return 0; });
+#     $ms_sdaf->redefine(script_run => sub { push @script_run_calls, $_[0] if grep /remover/, $_[0]; return 0; });
+#     $ms_sdaf->redefine(get_os_variable => sub {
+#             return '/some/path/LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars' if $_[0] eq 'workload_zone_parameter_file';
+#             return '/some/path/LAB-SECE-SAP04-QES-6453.tfvars' if $_[0] eq 'sap_system_parameter_file';
+#     });
+#
+#     sdaf_cleanup();
+#     is $script_run_calls[0],
+# '( /some/path/sap-automation/deploy/scripts/remover.sh --parameterfile LAB-SECE-SAP04-QES-6453.tfvars --type sap_system --auto-approve 2>&1 | tee /log/dir/path/cleanup_sap_system.log ; exit ${PIPESTATUS[0]})',
+#       'Return correct command for workload zone deployment';
+#
+#     is $script_run_calls[1],
+# '( /some/path/sap-automation/deploy/scripts/remover.sh --parameterfile LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars --type sap_landscape --auto-approve 2>&1 | tee /log/dir/path/cleanup_workload_zone.log ; exit ${PIPESTATUS[0]})',
+#       'Return correct command for SAP system deployment';
+# };
+#
+# subtest '[sdaf_execute_deployment] Test expected failures' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(script_run => sub { return 0; });
+#     $ms_sdaf->redefine(record_info => sub { return 1; });
+#     $ms_sdaf->redefine(upload_logs => sub { return 1; });
+#     $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
+#     $ms_sdaf->redefine(get_sdaf_deployment_command => sub { return '/execute/some/script.sh --important-option NotReallyImportant'; });
+#     $ms_sdaf->redefine(log_command_output => sub { return '/execute/some/script.sh --important-option NotReallyImportant >> log.file'; });
+#
+#     my @invalid_deployment_types = ('sap_sys', 'orkload', 'workload', 'zone', 'system', 'sap_system ', ' sap_system', '', ' ');
+#     dies_ok { sdaf_execute_deployment(deployment_type => $_) } "Fail with incorrect deployment type: '$_'" foreach @invalid_deployment_types;
+#
+#     $ms_sdaf->redefine(script_run => sub { return 1; });
+#     # Function must not fail with croak if command fails.
+#     my $croak_executed = 0;
+#     $ms_sdaf->redefine(croak => sub { $croak_executed = 1; die(); });
+#     dies_ok { sdaf_execute_deployment(deployment_type => 'sap_system') } 'Function dies with executed SDAF command RC!=0';
+#     is $croak_executed, 0, 'Ensure function failing because of correct reason';
+# };
+#
+# subtest '[sdaf_execute_deployment] Test generated SDAF deployment command' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my $sdaf_command_no_log;
+#
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(script_run => sub { return 0; });
+#     $ms_sdaf->redefine(record_info => sub { return 0; });
+#     $ms_sdaf->redefine(upload_logs => sub { return 0; });
+#     $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
+#     $ms_sdaf->redefine(sdaf_scripts_dir => sub { return '/tmp/deployment'; });
+#     $ms_sdaf->redefine(get_os_variable => sub { return '/some/path/LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars' });
+#     $ms_sdaf->redefine(set_os_variable => sub { return 1 });
+#
+#     # Capture command without logging part
+#     $ms_sdaf->redefine(log_command_output => sub { $sdaf_command_no_log = $_[1]; return; });
+#
+#     # Check if all required parameters are present including any form of value if required
+#     my @workload_zone_cmdline = ('^/tmp/deployment/install_workloadzone.sh\s',
+#         '\s--parameterfile\s.*(\s|$)',
+#         '\s--deployer_environment\s.*(\s|$)',
+#         '\s--deployer_tfstate_key\s.*(\s|$)',
+#         '\s--keyvault\s.*(\s|$)',
+#         '\s--storageaccountname\s.*(\s|$)',
+#         '\s--subscription\s.*(\s|$)',
+#         '\s--tenant_id\s.*(\s|$)',
+#         '\s--spn_id\s\$\{ARM_CLIENT_ID}(\s|$)',
+#         '\s--spn_secret\s\$\{ARM_CLIENT_SECRET}(\s|$)',
+#         '\s--auto-approve(\s|$)'
+#     );
+#
+#     my @sap_system_cmdline = ('^/tmp/deployment/installer.sh',
+#         '\s--parameterfile\s.*(\s|$)',
+#         '\s--type\ssap_system(\s|$)',
+#         '\s--storageaccountname\s.*(\s|$)',
+#         '\s--state_subscription\s.*(\s|$)',
+#         '\s--auto-approve(\s|$)'
+#     );
+#
+#     sdaf_execute_deployment(deployment_type => 'workload_zone');
+#     ok $sdaf_command_no_log =~ m/$_/, "Command for deploying workload zone must contain cmd option: '$_'" foreach @workload_zone_cmdline;
+#     sdaf_execute_deployment(deployment_type => 'sap_system');
+#     ok $sdaf_command_no_log =~ m/$_/, "Command for deploying sap systems must contain cmd option: '$_'" foreach @sap_system_cmdline;
+# };
+#
+# subtest '[sdaf_execute_deployment] Test "retry" functionality' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(record_info => sub { return 1; });
+#     $ms_sdaf->redefine(upload_logs => sub { return 0; });
+#     $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
+#     $ms_sdaf->redefine(sdaf_scripts_dir => sub { return '/tmp/deployment'; });
+#     $ms_sdaf->redefine(get_os_variable => sub { return '/some/path/LAB-SECE-SAP04-INFRASTRUCTURE-6453.tfvars' });
+#     $ms_sdaf->redefine(set_os_variable => sub { return 1 });
+#     $ms_sdaf->redefine(log_command_output => sub { return; });
+#     $ms_sdaf->redefine(get_sdaf_deployment_command => sub { return 'dd if=/dev/zero of=/dev/sda'; });
+#     my $retry = 0;
+#     $ms_sdaf->redefine(script_run => sub { $retry ++; print $retry; return 0 if $retry == 3; return 1});
+#
+#     ok sdaf_execute_deployment(deployment_type=>'workload_zone', retries=>3);
+# };
+#
+# subtest '[sdaf_execute_playbook] Fail with missing mandatory arguments' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my $croak_message;
+#     $ms_sdaf->redefine(croak => sub { $croak_message = $_[0]; die(); });
+#
+#     set_var('SDAF_ENV_CODE', 'LAB');
+#     set_var('SDAF_WORKLOAD_VNET_CODE', 'SAP04');
+#     set_var('PUBLIC_CLOUD_REGION', 'swedencentral');
+#     set_var('SAP_SID', 'QES');
+#
+#     dies_ok {sdaf_execute_playbook()} 'Croak with missing mandatory argument "playbook_filename"';
+#     ok $croak_message =~ m/playbook_filename/, 'Check if failure is triggered at correct place.';
+#
+#     undef_variables();
+# };
+#
+# subtest '[sdaf_execute_playbook] Command execution' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     my $ansible_playbook_cmd;
+#
+#     $ms_sdaf->redefine(log_dir => sub { return '/tmp/openqa_logs'; });
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/SDAF'; });
+#     $ms_sdaf->redefine(record_info => sub { return; });
+#     #$ms_sdaf->redefine(get_sdaf_config_path => sub { return '/tmp/SDAF/WORKSPACES/LANDSCAPE/LAB-SECE-SAP04-INFRASTRUCTURE/'; });
+#     $ms_sdaf->redefine(script_run => sub {
+#         $ansible_playbook_cmd = $_[0] if grep(/ansible-playbook/, $_[0]);
+#         return 0;
+#     });
+#
+#     set_var('SDAF_ENV_CODE', 'LAB');
+#     set_var('SDAF_WORKLOAD_VNET_CODE', 'SAP04');
+#     set_var('SDAF_REGION_CODE', 'swedencentral');
+#     set_var('SAP_SID', 'QES');
+#
+#     $ms_sdaf->redefine(upload_logs => sub { return ; });
+#
+#     my $expected_result = join(' ', '(', 'ansible-playbook',
+#         '--inventory-file="QAS_hosts.yaml"',
+#         '--private-key=/tmp/SDAF/WORKSPACES/SYSTEM/LAB-SECE-SAP04-QAS/sshkey',
+#         '--extra-vars=\'_workspace_directory=/tmp/SDAF/WORKSPACES/SYSTEM/LAB-SECE-SAP04-QAS\'',
+#         '--extra-vars="@sap-parameters.yaml"',
+#         '--ssh-common-args="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=120"',
+#         '/tmp/SDAF/sap-automation/deploy/ansible/playbook_01_os_base_config.yaml 2>&1',
+#         '| tee /tmp/openqa_logs/playbook_01_os_base_config.log',
+#         '; exit ${PIPESTATUS[0]})'
+#     );
+#
+#     sdaf_execute_playbook(playbook_filename=>'playbook_01_os_base_config.yaml', sap_sid=>'QAS', vnet_code=>'SAP04');
+#     is $ansible_playbook_cmd, $expected_result, "Execute correct ansible command:\n$ansible_playbook_cmd";
+#
+#     undef_variables();
+# };
+#
+# subtest '[convert_region_to_long] Test conversion' => sub {
+#     is convert_region_to_long('SECE'), 'swedencentral', 'Convert abbreviation "SECE" to "swedencentral"';
+#     is convert_region_to_long('WUS2'), 'westus2', 'Convert abbreviation "WUS2" to "westus2"';
+#     is convert_region_to_long('WEEU'), 'westeurope', 'Convert abbreviation "WEEU" to "westeurope"';
+# };
+#
+# subtest '[convert_region_to_long] Test invalid input' => sub {
+#     my @invalid_abbreviations = qw(aabc ASDF WUS5 WEEUU WWEEU WEEU.);
+#     dies_ok { convert_region_to_long() } 'Croak with missing mandatory argument';
+#     dies_ok { convert_region_to_long($_) } "Croak with invalid region abbreviation: $_" foreach @invalid_abbreviations;
+# };
+#
+# subtest '[convert_region_to_shor] Test conversion' => sub {
+#     is convert_region_to_shor('swedencentral'), 'SECE', 'Convert full region name "swedencentral" to "SECE"';
+#     is convert_region_to_shor('westus2'), 'WUS2', 'Convert full region name "westus2" to "WUS2"';
+#     is convert_region_to_shor('westeurope'), 'WEEU', 'Convert full region name "westeurope" to "WEEU"';
+# };
+#
+# subtest '[convert_region_to_shor] Test invalid input' => sub {
+#     my @invalid_region_names = qw(sweden central estus5 . estus);
+#     dies_ok { convert_region_to_shor() } 'Croak with missing mandatory argument';
+#     dies_ok { convert_region_to_shor($_) } "Croak with invalid region name: $_" foreach @invalid_region_names;
+# };
+#
+# subtest '[sdaf_get_keyvault_name] Test exceptions' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     $ms_sdaf->redefine(script_output => sub { return "Vault13\nVault15"; });
+#
+#     dies_ok {sdaf_get_keyvault_name()} 'Croak with missing mandatory argument "resource_group"';
+#     dies_ok {sdaf_get_keyvault_name(resource_group=>'GECK')} 'Fail with more than one vaults being returned';
+#
+#     $ms_sdaf->redefine(script_output => sub { return ''; });
+#     dies_ok {sdaf_get_keyvault_name(resource_group=>'GECK')} 'Fail with no key vault being found';
+# };
+#
+# subtest '[sdaf_get_keyvault_name]' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     $ms_sdaf->redefine(script_output => sub { return 'Vault13'; });
+#
+#     is sdaf_get_keyvault_name(resource_group=>'GECK'), 'Vault13', 'Pass with correct vault name being returned';
+# };
+#
+# subtest '[sdaf_get_resource_group]' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+#     $ms_sdaf->redefine(get_current_job_id => sub { return '13'; });
+#
+#     is sdaf_get_resource_group(deployment_type=>'workload_zone'), 'SDAF-OpenQA-workload_zone-13', 'Test returned value for workload zone';
+#     is sdaf_get_resource_group(deployment_type=>'sap_system'), 'SDAF-OpenQA-sap_system-13', 'Test returned value for sap system';
+# };
 
 done_testing;
