@@ -47,15 +47,16 @@ sub run {
     select_serial_terminal();
 
     # From now on everything is executed on Deployer VM (residing on cloud).
-    connect_target_to_serial();
+    # connect_target_to_serial();
 
     my $subscription_id = az_login();
     set_common_sdaf_os_env(subscription_id => $subscription_id);
+    assert_script_run('mkdir -p /opt/terraform/.terraform.d/plugin-cache');
     prepare_sdaf_project();
     record_info('Jumphost ready');
 
     # Do not leave connection hanging around between modules.
-    disconnect_target_from_serial();
+    # disconnect_target_from_serial();
     serial_console_diag_banner('Module sdaf_deployer_setup.pm : end');
 }
 

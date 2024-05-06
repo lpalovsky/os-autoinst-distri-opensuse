@@ -23,8 +23,8 @@ sub run {
     my $sap_sid = get_required_var('SAP_SID');
     my $vnet_code = get_required_var('SDAF_WORKLOAD_VNET_CODE');
 
-    connect_target_to_serial();
-    load_os_env_variables();
+    # connect_target_to_serial();
+    # load_os_env_variables();
 
     sdaf_execute_playbook(playbook_filename=>'pb_get-sshkey.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
     sdaf_execute_playbook(playbook_filename=>'playbook_00_validate_parameters.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
@@ -32,7 +32,7 @@ sub run {
     #sdaf_execute_playbook(playbook_filename=>'playbook_02_os_sap_specific_config.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
     #sdaf_execute_playbook(playbook_filename=>'playbook_04_00_00_db_install.yaml', sap_sid=>$sap_sid, vnet_code=>$vnet_code);
 
-    disconnect_target_from_serial();
+    # disconnect_target_from_serial();
     serial_console_diag_banner('Module sdaf_deploy_hanasr.pm : stop');
 }
 

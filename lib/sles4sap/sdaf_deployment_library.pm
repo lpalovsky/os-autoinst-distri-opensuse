@@ -299,7 +299,7 @@ sub az_login {
     record_info('AZ login', "Subscription id: $subscription_id");
 
     # Remove temp file with credentials.
-    assert_script_run("rm $temp_file");
+    #assert_script_run("rm $temp_file");
     return ($subscription_id);
 }
 

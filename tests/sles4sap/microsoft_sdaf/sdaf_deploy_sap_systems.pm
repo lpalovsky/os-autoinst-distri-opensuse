@@ -26,8 +26,8 @@ sub run {
     select_serial_terminal();
 
     # From now on everything is executed on Deployer VM (residing on cloud).
-    connect_target_to_serial();
-    load_os_env_variables();
+    # connect_target_to_serial();
+    # load_os_env_variables();
 
     # Setup Workload zone openQA variables - used for tfvars template
     set_var('SDAF_RESOURCE_GROUP', generate_resource_group_name(deployment_type => 'sap_system'));
@@ -46,7 +46,7 @@ sub run {
     sdaf_execute_deployment(deployment_type => 'sap_system', timeout => 3600);
 
     # diconnect the console
-    disconnect_target_from_serial();
+    # disconnect_target_from_serial();
 
     # reset temporary variables
     set_var('SDAF_RESOURCE_GROUP', undef);
