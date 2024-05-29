@@ -27,11 +27,12 @@
 environment = "%SDAF_ENV_CODE%"
 
 # The location value is a mandatory field, it is used to control where the resources are deployed
-location = "%SDAF_LOCATION%"
+location = "%PUBLIC_CLOUD_REGION%"
 
 #If you want to provide a custom naming json use the following parameter.
 #name_override_file = ""
 
+prevent_deletion_if_contains_resources = false
 
 #########################################################################################
 #                                                                                       #
@@ -83,6 +84,21 @@ public_network_access_enabled = true
 
 # place_delete_lock_on_resources, If defined, a delete lock will be placed on the key resources
 place_delete_lock_on_resources = false
+
+############################################################################################
+#                                                                                          #
+#                                  NAT Configuration                                       #
+#                                                                                          #
+############################################################################################
+
+deploy_nat_gateway = true
+nat_gateway_name   = "AFS-NOEU-SAP01-NG_0001"
+nat_gateway_public_ip_zones = ["1", "2", "3"]
+nat_gateway_idle_timeout_in_minutes = 10
+nat_gateway_public_ip_tags = {
+  "ipTagType": "FirstPartyUsage",
+  "tag": "/NonProd"
+}
 
 #########################################################################################
 #                                                                                       #
