@@ -45,8 +45,9 @@ sub run {
         {playbook_filename => 'playbook_00_validate_parameters.yaml', timeout => 120},
         {playbook_filename => 'playbook_01_os_base_config.yaml'},
         {playbook_filename => 'playbook_02_os_sap_specific_config.yaml'},
-        {playbook_filename => 'playbook_04_00_00_db_install.yaml'},
-        {playbook_filename => 'playbook_04_00_01_db_ha.yaml'},
+        {playbook_filename => 'playbook_03_bom_processing.yaml', timeout => 600},
+        {playbook_filename => 'playbook_04_00_00_db_install.yaml', timeout => 3600},
+        {playbook_filename => 'playbook_04_00_01_db_ha.yaml', timeout => 3600},
         {playbook_filename => 'playbook_07_00_00_post_installation.yaml'},
         {playbook_filename => 'playbook_08_00_00_post_configuration_actions.yaml'}
     );

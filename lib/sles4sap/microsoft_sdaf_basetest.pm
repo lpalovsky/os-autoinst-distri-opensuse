@@ -19,13 +19,13 @@ sub post_fail_hook {
         record_info('Cleanup OFF', 'OpenQA variable "SDAF_RETAIN_DEPLOYMENT" is active, skipping cleanup.');
         return;
     }
-
     record_info('Post fail', 'Executing post fail hook');
+
     # Cleanup SDAF files form Deployer VM
     connect_target_to_serial();
     load_os_env_variables();
     az_login();
-    sdaf_cleanup();
+    sdaf_deployment_cleanup();
     disconnect_target_from_serial();
 }
 

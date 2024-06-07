@@ -64,7 +64,7 @@ network_logical_name = "%SDAF_VNET_CODE%"
 #network_arm_id = ""
 
 # network_address_space is a mandatory parameter when an existing Virtual network is not used
-network_address_space = "10.10.0.0/16"
+network_address_space = "10.10.0.0/28"
 
 # use_private_endpoint is a boolean flag controlling if the key vaults and storage accounts have private endpoints
 use_private_endpoint = false
@@ -93,7 +93,7 @@ place_delete_lock_on_resources = false
 ############################################################################################
 
 deploy_nat_gateway = true
-nat_gateway_name   = "%SDAF_ENV_CODE%-%SDAF_REGION_CODE%-%SDAF_VNET_CODE%-NG_0001"
+nat_gateway_name   = "%SDAF_ENV_CODE%-%SDAF_REGION_CODE%-%SDAF_VNET_CODE%-NG_%SDAF_DEPLOYMENT_ID%"
 # nat_gateway_public_ip_zones = ["1", "2", "3"]
 # nat_gateway_idle_timeout_in_minutes = 10
 nat_gateway_public_ip_tags = {

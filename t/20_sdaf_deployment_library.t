@@ -1,5 +1,6 @@
 use strict;
 use warnings;
+#use Test::MockTime qw( :all );
 use Test::Mock::Time;
 use Test::More;
 use Test::Exception;
@@ -299,16 +300,15 @@ subtest '[sdaf_get_deployer_ip] Test passing behavior' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     my @script_output_commands;
     $ms_sdaf->redefine(record_info => sub { return; });
+    $ms_sdaf->redefine(sdaf_get_deployer_name => sub { return 'Eniac'; });
     $ms_sdaf->redefine(script_output => sub {
             push @script_output_commands, $_[0];
             return 'vmhana01' if grep /vm\slist\s/, @_;
             return '192.168.0.1'; });
 
     my $ip_addr = sdaf_get_deployer_ip(deployer_resource_group => 'OpenQA_SDAF_0079');
-    is $script_output_commands[0], 'az vm list --resource-group OpenQA_SDAF_0079 --query [].name --output tsv',
-      'Pass using correct command for retrieving vm list';
-    is $script_output_commands[1],
-      'az vm list-ip-addresses --resource-group OpenQA_SDAF_0079 --name vmhana01 --query "[].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv',
+    is $script_output_commands[0],
+      'az vm list-ip-addresses --resource-group OpenQA_SDAF_0079 --name Eniac --query "[].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv',
       'Pass using correct command for retrieving public IP addr';
     is $ip_addr, '192.168.0.1', 'Pass returning correct IP addr';
 
@@ -319,6 +319,7 @@ subtest '[sdaf_get_deployer_ip] Test passing behavior' => sub {
 subtest '[sdaf_get_deployer_ip] Test expected failures' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     $ms_sdaf->redefine(record_info => sub { return; });
+    $ms_sdaf->redefine(sdaf_get_deployer_name => sub { return 'Eniac'; });
     my @incorrect_ip_addresses = (
         '192.168.0.500',
         '192.168.o.5',
@@ -399,7 +400,7 @@ subtest '[az_login]' => sub {
     undef_variables();
 };
 
-subtest '[sdaf_cleanup] Test correct usage' => sub {
+subtest '[sdaf_deployment_cleanup] Test correct usage' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     my $files_deleted;
 
@@ -410,11 +411,11 @@ subtest '[sdaf_cleanup] Test correct usage' => sub {
     $ms_sdaf->redefine(assert_script_run => sub { $files_deleted = 1; return 1; });
     $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
 
-    ok sdaf_cleanup(), 'Pass with correct usage';
+    ok sdaf_deployment_cleanup(), 'Pass with correct usage';
     is $files_deleted, 1, 'Function must delete files at the end';
 };
 
-subtest '[sdaf_cleanup] Test remover script failures' => sub {
+subtest '[sdaf_deployment_cleanup] Test remover script failures' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     my $files_deleted;
 
@@ -426,7 +427,7 @@ subtest '[sdaf_cleanup] Test remover script failures' => sub {
     $ms_sdaf->redefine(deployment_dir => sub { return '/tmp/deployment'; });
 
     $ms_sdaf->redefine(sdaf_execute_remover => sub { return 1; });
-    dies_ok { sdaf_cleanup() } 'Test failing remover script';
+    dies_ok { sdaf_deployment_cleanup() } 'Test failing remover script';
     is $files_deleted, 1, 'Function must delete files after remover failure';
 
 
@@ -459,7 +460,7 @@ subtest '[sdaf_execute_remover] Test functionality' => sub {
             return '/some/path/LAB-SECE-SAP04-QES-6453.tfvars' if $_[0] eq 'sap_system_parameter_file';
     });
 
-    sdaf_cleanup();
+    sdaf_deployment_cleanup();
     is $script_run_calls[0],
 '( /some/path/sap-automation/deploy/scripts/remover.sh --parameterfile LAB-SECE-SAP04-QES-6453.tfvars --type sap_system --auto-approve 2>&1 | tee /log/dir/path/cleanup_sap_system.log ; exit ${PIPESTATUS[0]})',
       'Return correct command for workload zone deployment';
@@ -648,6 +649,68 @@ subtest '[sdaf_execute_playbook] Command verbosity' => sub {
     }
 
     undef_variables();
+};
+
+subtest '[sdaf_get_deployer_name]' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    $ms_sdaf->redefine(get_current_job_id => sub { return '84'; });
+    is sdaf_get_deployer_name(), '84-OpenQA_Deployer_VM', "Generate deployer name without any parameter";
+    is sdaf_get_deployer_name(job_id=>'42'), '42-OpenQA_Deployer_VM', "Generate deployer name by specifying \$arg{job_id}";
+};
+subtest '[sdaf_check_deployer_ssh]' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my @calls;
+
+    $ms_sdaf->redefine(script_run => sub { push(@calls, $_[0]); return 0; });
+
+    my $ssh_avail = sdaf_check_deployer_ssh('1.2.3.4');
+
+    note("\n  C-->  " . join("\n  C-->  ", @calls));
+    ok(($ssh_avail eq 1), "ssh_avail= $ssh_avail as expected 1");
+    ok((none { /nc.*-w/ } @calls), 'No -w in nc if wait_started is not enabled');
+    ok((any { /nc.*\s+1\.2\.3\.4/ } @calls), 'IP in nc command');
+};
+
+subtest '[sdaf_check_deployer_ssh] timeout but no wait_started' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my @calls;
+
+    $ms_sdaf->redefine(script_run => sub { push(@calls, $_[0]); return 1; });
+
+    my $ssh_avail = sdaf_check_deployer_ssh('1.2.3.4');
+
+    note("\n  C-->  " . join("\n  C-->  ", @calls));
+    ok(($ssh_avail eq 0), "ssh_avail=$ssh_avail as expected 0");
+    ok((none { /nc.*-w/ } @calls), 'No -w in nc if wait_started is not enabled');
+    ok((any { /nc.*\s+1\.2\.3\.4/ } @calls), 'IP in nc command');
+};
+
+subtest '[sdaf_check_deployer_ssh] timeout and wait_started=0' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my @calls;
+
+    $ms_sdaf->redefine(script_run => sub { push(@calls, $_[0]); return 1; });
+
+    my $ssh_avail = sdaf_check_deployer_ssh('1.2.3.4', wait_started => 0);
+
+    note("\n  C-->  " . join("\n  C-->  ", @calls));
+    ok(($ssh_avail eq 0), "ssh_avail=$ssh_avail as expected 0");
+    ok((none { /nc.*-w/ } @calls), 'No -w in nc if wait_started is not enabled');
+    ok((any { /nc.*\s+1\.2\.3\.4/ } @calls), 'IP in nc command');
+};
+
+subtest '[sdaf_check_deployer_ssh] Test command looping' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my $loop_count = 0;
+    $ms_sdaf->redefine(diag => sub { $loop_count ++; return; });
+    $ms_sdaf->redefine(script_run => sub {return 0; });
+    my $ip_addr = '10.10.10.10';
+
+    $ms_sdaf->redefine( script_run => sub { return 1; });
+
+    sdaf_check_deployer_ssh($ip_addr, wait_started=>'1');
+    ok(($loop_count > 0), "Test retry loop with \$args{wait_started}. Loop count: $loop_count");
+
 };
 
 done_testing;

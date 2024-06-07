@@ -21,7 +21,7 @@ sub test_flags {
 }
 
 sub run {
-    serial_console_diag_banner('end: sdaf_cleanup.pm');
+    serial_console_diag_banner('start: sdaf_cleanup.pm');
     if (get_var('SDAF_RETAIN_DEPLOYMENT')) {
         record_info('Cleanup OFF', 'OpenQA variable "SDAF_RETAIN_DEPLOYMENT" is active, skipping cleanup.');
         return;
@@ -31,8 +31,9 @@ sub run {
     connect_target_to_serial();
     load_os_env_variables();
     az_login();
-    sdaf_cleanup();
+    sdaf_deployment_cleanup();
     disconnect_target_from_serial();
+    serial_console_diag_banner('end: sdaf_cleanup.pm');
 }
 
 1;

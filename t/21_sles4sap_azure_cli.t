@@ -396,4 +396,75 @@ subtest '[az_network_lb_rule_create]' => sub {
     ok((any { /az network lb rule create/ } @calls), 'Correct composition of the main command');
 };
 
+subtest '[az_vm_deallocate]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    my $vm_deallocated;
+    $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
+    $azcli->redefine(record_info => sub { $vm_deallocated = grep(/stopped/, @_); return; });
+    $azcli->redefine(az_vm_instance_view_get => sub { return ("PowerState/running", "VM running"); });
+
+    az_vm_deallocate(resource_group=>'Pa_a_Pi', name=>'Od_Kuka_do_Kuka');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az vm deallocate/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+
+    $azcli->redefine(az_vm_instance_view_get => sub { return ("PowerState/deallocated", "VM deallocated"); });
+    az_vm_deallocate(resource_group=>'Pa_a_Pi', name=>'Od_Kuka_do_Kuka');
+    ok( $vm_deallocated, 'Do not trigger "az vm deallocate" if VM is down');
+};
+
+subtest '[az_snapshot_create]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
+
+    az_snapshot_create(resource_group=>'Pa_a_Pi', name=>'Od_Kuka_do_Kuka', source=>'Harvepino');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az snapshot create/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+    ok(grep(/--source Harvepino/, @calls), 'Check for argument "--source"');
+};
+
+subtest '[az_disk_create]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
+
+    az_disk_create(resource_group=>'Pa_a_Pi', name=>'Od_Kuka_do_Kuka', source=>'Harvepino');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az disk create/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+    ok(grep(/--source Harvepino/, @calls), 'Check for argument "--source"');
+};
+
+subtest '[az_disk_delete]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
+
+    az_disk_delete(resource_group=>'Pa_a_Pi', disk_name=>'Od_Kuka_do_Kuka');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az disk delete/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--disk_name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--disk_name"');
+    ok(grep(/--yes/, @calls), 'Prevent interactive prompt with arg "--yes"');
+};
+
+subtest '[az_vm_delete]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
+
+    az_vm_delete(resource_group=>'Pa_a_Pi', name=>'Od_Kuka_do_Kuka');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az vm delete/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+    ok(grep(/--yes/, @calls), 'Prevent interactive prompt with arg "--yes"');
+};
+
 done_testing;

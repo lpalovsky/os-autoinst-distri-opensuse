@@ -35,13 +35,18 @@ our @EXPORT = qw(
   az_vm_create
   az_vm_name_get
   az_vm_openport
+  az_vm_deallocate
+  az_vm_delete
   az_vm_wait_cloudinit
   az_vm_instance_view_get
+  az_snapshot_create
   az_nic_id_get
   az_nic_name_get
   az_ipconfig_name_get
   az_ipconfig_update
   az_ipconfig_pool_add
+  az_disk_create
+  az_disk_delete
 );
 
 
@@ -864,4 +869,135 @@ sub az_ipconfig_pool_add {
         '--ip-config-name', $args{ipconfig_name},
         '--nic-name', $args{nic_name});
     assert_script_run($az_cmd);
+}
+
+=head2 az_vm_deallocate
+
+    az_vm_deallocate(resource_group=>$resource_group, vm_name=>$vm_name);
+
+B<resource_group> Existing resource group name.
+
+B<name> Existing VM name
+
+Deallocate (stop) existing VM. If VM is already stopped, the command is not executed.
+
+=cut
+
+sub az_vm_deallocate {
+    my (%args) = @_;
+    foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
+
+    my $az_cmd = join(' ', 'az vm deallocate',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}"
+    );
+
+    # If running 'az vm deallocate' on already stopped VM, the command takes about 30 sec to complete.
+    # If statement below is to avoid waiting.
+    my @vm_state = az_vm_instance_view_get(resource_group=>$args{resource_group}, name=>$args{name});
+    if (grep(/deallocated/, @vm_state)) {
+        record_info('VM state', "VM '$args{name}' is already stopped.");
+        return;
+    }
+
+    record_info('VM state', "Deallocating VM '$args{name}'\nCMD: $az_cmd");
+    assert_script_run($az_cmd);
+}
+
+=head2 az_snapshot_create
+
+    az_vm_deallocate(resource_group=>$resource_group, vm_name=>$vm_name, source=>$source);
+
+B<resource_group> Existing resource group name.
+
+B<source> Disk to create snapshot of
+
+B<name> Snapshot name
+
+Creates snapshot of specified disk resource.
+
+=cut
+
+sub az_snapshot_create {
+    my (%args) = @_;
+    foreach ('resource_group', 'name', 'source') { croak("Argument < $_ > missing") unless $args{$_}; }
+
+    my $az_command = join(' ', 'az snapshot create',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}",
+        "--source $args{source}"
+    );
+
+    assert_script_run($az_command);
+}
+
+=head2 az_disk_create
+
+    az_disk_create(resource_group=>$resource_group, vm_name=>$vm_name [, source=$source]);
+
+B<resource_group> Existing resource group name.
+
+B<source> Disk to create snapshot of
+
+B<name> Snapshot name
+
+Creates az disk.
+
+=cut
+
+sub az_disk_create {
+    my (%args) = @_;
+    foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
+    my @az_command = ('az disk create',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}"
+    );
+    push @az_command, "--source $args{source}" if $args{source};
+    assert_script_run(join(' ', @az_command));
+}
+
+=head2 az_disk_delete
+
+    az_disk_delete(resource_group=>$resource_group, disk_name=>$disk_name);
+
+B<resource_group> Existing resource group name.
+
+B<disk_name> Name of the dist to delete
+
+Deletes disk specified by disk name and resource group.
+
+=cut
+
+sub az_disk_delete {
+    my (%args) = @_;
+    foreach ('resource_group', 'disk_name') { croak("Argument < $_ > missing") unless $args{$_}; }
+    my @az_command = ('az disk delete',
+        "--resource-group $args{resource_group}",
+        "--disk_name $args{disk_name}",
+        "--yes"
+    );
+    assert_script_run(join(' ', @az_command));
+}
+
+=head2 az_vm_delete
+
+    az_vm_delete(resource_group=>$resource_group, name=>$name);
+
+B<resource_group> Existing resource group name.
+
+B<name> Name of the dist to delete
+
+Deletes VM specified by name and resource group.
+
+=cut
+
+sub az_vm_delete {
+    my (%args) = @_;
+    foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
+    my @az_command = ('az vm delete',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}",
+        "--yes"
+    );
+    assert_script_run(join(' ', @az_command));
 }
