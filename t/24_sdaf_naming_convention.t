@@ -80,7 +80,7 @@ subtest '[get_tfvars_path] Test passing scenarios' => sub {
 };
 
 
-subtest '[generate_resource_group_name]' => sub {
+subtest '[sdaf_gen_resource_group_name]' => sub {
     my $mock_lib = Test::MockModule->new('sles4sap::sdaf_naming_conventions', no_auto => 1);
     $mock_lib->redefine(get_current_job_id => sub { return '0079'; });
     my @expected_failures = ('something_funky', 'workload', 'zone', 'sut', 'lib', 'deploy');
@@ -92,11 +92,11 @@ subtest '[generate_resource_group_name]' => sub {
     );
 
     for my $value (@expected_failures) {
-        dies_ok { generate_resource_group_name(deployment_type => $value); } "Fail with unsupported 'SDAF_DEPLOYMENT_TYPE' value: $value";
+        dies_ok { sdaf_gen_resource_group_name(deployment_type => $value); } "Fail with unsupported 'SDAF_DEPLOYMENT_TYPE' value: $value";
     }
 
     for my $type (keys %expected_pass) {
-        my $rg = generate_resource_group_name(deployment_type => $type);
+        my $rg = sdaf_gen_resource_group_name(deployment_type => $type);
         is $rg, $expected_pass{$type}, "Pass with '$type' and resource group '$rg";
     }
 };
@@ -127,5 +127,11 @@ subtest '[convert_region_to_short] Test invalid input' => sub {
 };
 
 
+subtest '[sdaf_gen_deployer_name]' => sub {
+    my $mock_lib = Test::MockModule->new('sles4sap::sdaf_naming_conventions', no_auto => 1);
+    $mock_lib->redefine(get_current_job_id => sub { return '84'; });
+    is sdaf_gen_deployer_name(), '84-OpenQA_Deployer_VM', "Generate deployer name without any parameter";
+    is sdaf_gen_deployer_name(job_id=>'42'), '42-OpenQA_Deployer_VM', "Generate deployer name by specifying \$arg{job_id}";
+};
 
 done_testing;

@@ -31,7 +31,7 @@ sub run {
     load_os_env_variables();
 
     # Setup Workload zone openQA variables - used for tfvars template
-    set_var('SDAF_RESOURCE_GROUP', generate_resource_group_name(deployment_type => 'sap_system'));
+    set_var('SDAF_RESOURCE_GROUP', sdaf_gen_resource_group_name(deployment_type => 'sap_system'));
     # SAP systems use same VNET as workload zone
     set_var('SDAF_VNET_CODE', get_required_var('SDAF_WORKLOAD_VNET_CODE'));
     # 'vnet_code' variable changes with deployment type.

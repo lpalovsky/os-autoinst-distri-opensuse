@@ -197,25 +197,23 @@ LAB-SECE-DEP05-ssh
     dies_ok { sdaf_prepare_ssh_keys(deployer_key_vault => 'LABSECEDEP05userDDF') } 'Fail with not keyfile being found';
 };
 
-subtest '[sdaf_get_deployer_ip] Test passing behavior' => sub {
+subtest '[sdaf_get_deployer_ip]' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
-    my @script_output_commands;
+    my @calls;
     $ms_sdaf->redefine(record_info => sub { return; });
-    $ms_sdaf->redefine(script_output => sub {
-            push @script_output_commands, $_[0];
-            return 'vmhana01' if grep /vm\slist\s/, @_;
-            return '192.168.0.1'; });
+    $ms_sdaf->redefine(sdaf_check_deployer_ssh => sub { return 1; });
+    $ms_sdaf->redefine(script_output => sub { push @calls, $_[0]; return '[
+  "192.168.1.1",
+  "192.168.1.2"
+]'});
 
-    my $ip_addr = sdaf_get_deployer_ip(deployer_resource_group => 'OpenQA_SDAF_0079');
-    is $script_output_commands[0], 'az vm list --resource-group OpenQA_SDAF_0079 --query [].name --output tsv',
-      'Pass using correct command for retrieving vm list';
-    is $script_output_commands[1],
-      'az vm list-ip-addresses --resource-group OpenQA_SDAF_0079 --name vmhana01 --query "[].virtualMachine.network.publicIpAddresses[0].ipAddress" -o tsv',
-      'Pass using correct command for retrieving public IP addr';
-    is $ip_addr, '192.168.0.1', 'Pass returning correct IP addr';
-
-    dies_ok { sdaf_get_deployer_ip() } 'Fail with missing deployer resource group argument';
-    $ms_sdaf->redefine(script_output => sub { return '192.168.0.1'; });
+    sdaf_get_deployer_ip(deployer_resource_group => 'OpenQA_SDAF_0087', deployer_vm_name=>'Zeta');
+    ok(grep(/az vm list-ip-addresses/, @calls), 'Test base command');
+    ok(grep(/--resource-group/, @calls), 'Check for --resource-group argument');
+    ok(grep(/--name/, @calls), 'Check for vm name --name argument');
+    ok(grep(/--query \"\[].virtualMachine.network.publicIpAddresses\[].ipAddress\"/, @calls),
+        'Check for vm name --query argument');
+    ok(grep(/-o json/, @calls), 'Output result in json format');
 };
 
 subtest '[sdaf_get_deployer_ip] Test expected failures' => sub {
@@ -228,10 +226,11 @@ subtest '[sdaf_get_deployer_ip] Test expected failures' => sub {
         '2001:db8:85a3::8a2e:370:7334'
     );
 
-    dies_ok { sdaf_get_deployer_ip() } 'Fail with missing deployer resource group argument';
+    dies_ok { sdaf_get_deployer_ip(deployer_vm_name=>'RMS-106_Hizack') } 'Fail with missing deployer resource group argument';
+    dies_ok { sdaf_get_deployer_ip(deployer_resource_group=>'RX-178_Mk-II') } 'Fail with missing deployer resource group argument';
     for my $ip_input (@incorrect_ip_addresses) {
         $ms_sdaf->redefine(script_output => sub { return $ip_input; });
-        dies_ok { sdaf_get_deployer_ip(deployer_resource_group => 'Open_QA_DEPLOYER') } "Detect incorrect IP addr pattern: $ip_input";
+        dies_ok { sdaf_get_deployer_ip(deployer_resource_group => 'OpenQA_SDAF_0087') } "Detect incorrect IP addr pattern: $ip_input";
     }
 };
 
@@ -306,7 +305,7 @@ subtest '[sdaf_cleanup] Test correct usage' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     my $files_deleted;
 
-    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+    $ms_sdaf->redefine(sdaf_gen_resource_group_name => sub { return 'ResourceGroup'; });
     $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
     $ms_sdaf->redefine(record_info => sub { return 1; });
     $ms_sdaf->redefine(sdaf_execute_remover => sub { return 0; });
@@ -321,7 +320,7 @@ subtest '[sdaf_cleanup] Test remover script failures' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
     my $files_deleted;
 
-    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'ResourceGroup'; });
+    $ms_sdaf->redefine(sdaf_gen_resource_group_name => sub { return 'ResourceGroup'; });
     $ms_sdaf->redefine(resource_group_exists => sub { return 'yes it does'; });
     $ms_sdaf->redefine(sdaf_execute_remover => sub { return '0'; });
     $ms_sdaf->redefine(record_info => sub { return 1; });
@@ -340,7 +339,7 @@ subtest '[sdaf_execute_remover] Check command line arguments' => sub {
     my @script_run_calls;
     $ms_sdaf->redefine(upload_logs => sub { return; });
     $ms_sdaf->redefine(resource_group_exists => sub { return 'yes'; });
-    $ms_sdaf->redefine(generate_resource_group_name => sub { return 'WhiteBase'; });
+    $ms_sdaf->redefine(sdaf_gen_resource_group_name => sub { return 'WhiteBase'; });
     $ms_sdaf->redefine(log_dir => sub { return '/Principality/of'; });
     $ms_sdaf->redefine(deployment_dir => sub { return '/Principality/of/Zeon'; });
     $ms_sdaf->redefine(sdaf_scripts_dir => sub { return '/Earth/Federation'; });
@@ -520,6 +519,62 @@ subtest '[sdaf_execute_playbook] Command verbosity' => sub {
     }
 
     undef_variables();
+};
+
+subtest '[sdaf_check_deployer_ssh]' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my @calls;
+
+    $ms_sdaf->redefine(script_run => sub { push(@calls, $_[0]); return 0; });
+
+    my $ssh_avail = sdaf_check_deployer_ssh('1.2.3.4');
+
+    note("\n  C-->  " . join("\n  C-->  ", @calls));
+    ok(($ssh_avail eq 1), "ssh_avail= $ssh_avail as expected 1");
+    ok((none { /nc.*-w/ } @calls), 'No -w in nc if wait_started is not enabled');
+    ok((any { /nc.*\s+1\.2\.3\.4/ } @calls), 'IP in nc command');
+};
+
+subtest '[sdaf_check_deployer_ssh] timeout but no wait_started' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my @calls;
+
+    $ms_sdaf->redefine(script_run => sub { push(@calls, $_[0]); return 1; });
+
+    my $ssh_avail = sdaf_check_deployer_ssh('1.2.3.4');
+
+    note("\n  C-->  " . join("\n  C-->  ", @calls));
+    ok(($ssh_avail eq 0), "ssh_avail=$ssh_avail as expected 0");
+    ok((none { /nc.*-w/ } @calls), 'No -w in nc if wait_started is not enabled');
+    ok((any { /nc.*\s+1\.2\.3\.4/ } @calls), 'IP in nc command');
+};
+
+subtest '[sdaf_check_deployer_ssh] timeout and wait_started=0' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my @calls;
+
+    $ms_sdaf->redefine(script_run => sub { push(@calls, $_[0]); return 1; });
+
+    my $ssh_avail = sdaf_check_deployer_ssh('1.2.3.4', wait_started => 0);
+
+    note("\n  C-->  " . join("\n  C-->  ", @calls));
+    ok(($ssh_avail eq 0), "ssh_avail=$ssh_avail as expected 0");
+    ok((none { /nc.*-w/ } @calls), 'No -w in nc if wait_started is not enabled');
+    ok((any { /nc.*\s+1\.2\.3\.4/ } @calls), 'IP in nc command');
+};
+
+subtest '[sdaf_check_deployer_ssh] Test command looping' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sdaf_deployment_library', no_auto => 1);
+    my $loop_count = 0;
+    $ms_sdaf->redefine(diag => sub { $loop_count ++; return; });
+    $ms_sdaf->redefine(script_run => sub {return 0; });
+    my $ip_addr = '10.10.10.10';
+
+    $ms_sdaf->redefine( script_run => sub { return 1; });
+
+    sdaf_check_deployer_ssh($ip_addr, wait_started=>'1');
+    ok(($loop_count > 0), "Test retry loop with \$args{wait_started}. Loop count: $loop_count");
+
 };
 
 done_testing;

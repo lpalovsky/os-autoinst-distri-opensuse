@@ -21,6 +21,8 @@ use Regexp::Common qw(net);
 use utils qw(write_sut_file file_content_replace);
 use Scalar::Util 'looks_like_number';
 use sles4sap::sdaf_naming_conventions;
+use sles4sap::azure_cli;
+use Mojo::JSON qw(decode_json);
 
 =head1 SYNOPSIS
 
@@ -65,6 +67,8 @@ our @EXPORT = qw(
   load_os_env_variables
   sdaf_cleanup
   sdaf_execute_playbook
+  sdaf_check_deployer_ssh
+  sdaf_destroy_deployer_vm
 );
 
 
@@ -312,26 +316,30 @@ sub load_os_env_variables {
 
 =head2 sdaf_get_deployer_ip
 
-    sdaf_get_deployer_ip(deployer_resource_group=>$deployer_resource_group);
+    sdaf_get_deployer_ip(deployer_resource_group=>$deployer_resource_group, deployer_vm_name=>$deployer_vm_name);
 
-B<deployer_resource_group>: Deployer key vault name
+B<deployer_resource_group>: Deployer resource group
 
-Retrieves public IP of the deployer VM.
+B<deployer_vm_name>: Deployer VM resource name
+
+Returns first public IP of deployer VM that is reachable and can be used for SDAF deployment connection.
 
 =cut
 
 sub sdaf_get_deployer_ip {
     my (%args) = @_;
     croak 'Missing "deployer_resource_group" argument' unless $args{deployer_resource_group};
+    croak 'Missing "deployer_vm_name" argument' unless $args{deployer_vm_name};
 
-    my $vm_name = script_output("az vm list --resource-group $args{deployer_resource_group} --query [].name --output tsv");
     my $az_query_cmd = join(' ', 'az', 'vm', 'list-ip-addresses', '--resource-group', $args{deployer_resource_group},
-        '--name', $vm_name, '--query', '"[].virtualMachine.network.publicIpAddresses[0].ipAddress"', '-o', 'tsv');
+        '--name', $args{deployer_vm_name}, '--query', '"[].virtualMachine.network.publicIpAddresses[].ipAddress"', '-o', 'json');
 
-    my $ip_addr = script_output($az_query_cmd);
-    croak "Not a valid ip addr: $ip_addr" unless grep /^$RE{net}{IPv4}$/, $ip_addr;
-    record_info('Deployer data', "Deployer resource group: $args{deployer_resource_group} \nDeployer VM IP: $ip_addr");
-    return $ip_addr;
+    my $ip_addr = decode_json(script_output($az_query_cmd));
+    # Find first IP connection working
+    for my $ip (@{ $ip_addr }) {
+        return $ip if sdaf_check_deployer_ssh($ip, wait_started=>'yes');
+    }
+    return undef;
 }
 
 =head2 sdaf_prepare_ssh_keys
@@ -745,7 +753,7 @@ sub sdaf_cleanup {
     my $remover_rc = 1;
     # Sap system needs to be destroyed before workload zone so order matters here.
     for my $deployment_type ('sap_system', 'workload_zone') {
-        my $resource_group = resource_group_exists(generate_resource_group_name(deployment_type => $deployment_type));
+        my $resource_group = resource_group_exists(sdaf_gen_resource_group_name(deployment_type => $deployment_type));
         unless ($resource_group) {
             record_info('Cleanup skip', "Resource group for deployment type '$deployment_type' does not exist. Skipping cleanup");
             next;
@@ -839,4 +847,71 @@ sub sdaf_ansible_verbosity_level {
     return '' unless $verbosity_level;
     return '-' . 'v' x $verbosity_level if looks_like_number($verbosity_level) and $verbosity_level <= 6;
     return '-vvvv';    # Default set to "-vvvv"
+}
+
+=head2 sdaf_check_deployer_ssh
+
+    sdaf_check_deployer_ssh($deployer_ip_addr [, $wait_started=>'true']);
+
+B<deployer_ip_addr>: Deployer VM IP address
+
+B<wait_started>: Wait until SSH available or timeout.
+
+B<ssh_port>: Specify custom SSH port number. Default: 22
+
+B<wait_timeout>: Time in sec to stop waiting after if ssh is still unavailable
+
+Checks if deployer VM is running and ssh is available. Returns found state.
+Optionally function can wait till VM reaches requested state until timeout.
+Function dies only with internal errors, VM status should be evaluated and handled by caller.
+
+=cut
+
+sub sdaf_check_deployer_ssh {
+    my ($deployer_ip_addr, %args) = @_;
+    croak 'Deployer IP not specified.' unless $deployer_ip_addr;
+    $args{wait_timeout} //= 180;
+    $args{ssh_port} //= 22;
+    my $ssh_available = 0;
+
+    my $nc_cmd = 'nc -zv';
+    $nc_cmd .= ' -w 10' if $args{wait_started}; # This option lets wait 10s for server response
+    $nc_cmd .= " $deployer_ip_addr $args{ssh_port}";
+
+    my $start_time = time();
+    until ($ssh_available) {
+        $ssh_available = 1 if !script_run($nc_cmd);
+        last unless $args{wait_started};
+        last if (time() - $start_time) >= $args{wait_timeout};
+        diag('SSH unavailable, retrying...');
+        sleep 5; # just a separation between loops, to avoid bombarding the server constantly
+    }
+
+    return $ssh_available;
+}
+
+sub sdaf_destroy_deployer_vm {
+    my (%args) = @_;
+    foreach ('resource_group', 'deployer_name') {
+        croak "Missing mandatory argument : <$_>" unless $args{$_};
+    };
+
+    my %deployer_disk_list = az_vm_disk_list(resource_group=>$args{resource_group}, name=>$args{deployer_name});
+    my @nic_list;
+    my @public_ip_list = az_vm_list_ip_addresses(resource_group=>$args{resource_group}, name=>$args{deployer_name});
+    my @nsg_list;
+
+    az_vm_delete(resource_group=>$args{resource_group}, name=>$args{deployer_name});
+
+    # Delete OS disk
+    az_disk_delete(resource_group=>$args{resource_group}, disk_name=>$deployer_disk_list{osDisk});
+    # Delete remaining disks
+    foreach ($deployer_disk_list{dataDisks}) {
+        az_disk_delete(resource_group=>$args{resource_group}, disk_name=>$_);
+    }
+
+    assert_script_run('az network nic delete --ids ' . join(' ', @nic_list));
+    assert_script_run('az network public-ip delete --ids' . join(' ', @public_ip_list));
+    assert_script_run('az network nsg delete --ids' . join(' ', @nsg_list));
+
 }

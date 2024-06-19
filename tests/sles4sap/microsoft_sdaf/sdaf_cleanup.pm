@@ -33,6 +33,9 @@ sub run {
     az_login();
     sdaf_cleanup();
     disconnect_target_from_serial();
+
+    # Destroy deployer VM
+    sdaf_destroy_deployer_vm(resource_group=>'', deployer_name=>'');
 }
 
 1;

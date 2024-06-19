@@ -430,4 +430,70 @@ subtest '[az_network_lb_rule_create]' => sub {
     ok((any { /az network lb rule create/ } @calls), 'Correct composition of the main command');
 };
 
+subtest '[az_disk_create]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
+
+    az_disk_create(resource_group=>'Pa_a_Pi', name=>'Od_Kuka_do_Kuka', source=>'Harvepino');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az disk create/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+    ok(grep(/--source Harvepino/, @calls), 'Check for argument "--source"');
+};
+
+subtest '[az_disk_delete]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { push @calls, $_[0]; return; });
+
+    az_disk_delete(resource_group=>'Pa_a_Pi', disk_name=>'Od_Kuka_do_Kuka');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az disk delete/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--disk_name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--disk_name"');
+    ok(grep(/--yes/, @calls), 'Prevent interactive prompt with arg "--yes"');
+};
+
+subtest '[az_vm_disk_list]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(script_output => sub {
+        push @calls, $_[0];
+        return '{
+  "dataDisks": ["Disk_1", "Disk_2"],
+  "osDisk": "286765-OpenQA_Deployer_VM_OS"}
+';
+    });
+    my %result = %{ az_vm_disk_list(resource_group => 'Pa_a_Pi', name => 'Od_Kuka_do_Kuka') };
+
+    note(":\n", join("\n", @calls, ));
+    ok(grep(/osDisk/, keys(%result)), 'Result contains OS storage');
+    ok(grep(/dataDisks/, keys(%result)), 'Result contains data storage devices');
+    ok(grep(/az vm show/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+    ok(grep(/--query \"storageProfile.\{osDisk: \[osDisk.name], dataDisks: dataDisks\[].name}"/, @calls), 'Check for argument "--query"');
+    ok(grep(/--output json/, @calls), 'Return output in json format');
+};
+
+subtest '[az_vm_list_ip_addresses]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(script_output => sub {
+        push @calls, $_[0];
+        return '["/Bob/a/Bobek", "/Matko/a/Kubko"]';
+    });
+    my $result = az_vm_list_ip_addresses(resource_group => 'Pa_a_Pi', name => 'Od_Kuka_do_Kuka');
+    note("CMD: " . join(' ', @calls));
+
+    is ref($result), 'ARRAY', 'Return an array';
+    ok(grep(/az vm list-ip-addresses/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+    ok(grep(/--query \"\[].virtualMachine.network.publicIpAddresses\[].id"/, @calls), 'Check for argument "--query"');
+    ok(grep(/--output json/, @calls), 'Return output in json format');
+};
+
 done_testing;

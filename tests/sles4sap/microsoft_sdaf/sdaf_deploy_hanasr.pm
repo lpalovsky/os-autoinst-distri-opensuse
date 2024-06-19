@@ -30,7 +30,7 @@ sub test_flags {
     return {fatal => 1};
 }
 
-sub run {
+sub +run {
     serial_console_diag_banner('Module sdaf_deploy_hanasr.pm : start');
     my $sdaf_config_root_dir = get_sdaf_config_path(
         deployment_type => 'sap_system',
