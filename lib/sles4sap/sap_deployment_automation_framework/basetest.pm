@@ -11,8 +11,11 @@ use strict;
 use warnings;
 use testapi;
 use parent 'opensusebasetest';
-use sles4sap::sap_deployment_automation_framework::deployment;
-use sles4sap::console_redirection;
+use sles4sap::sap_deployment_automation_framework::deployment qw(sdaf_cleanup az_login load_os_env_variables);
+use sles4sap::sap_deployment_automation_framework::deployment_connector qw(find_deployer_resources);
+use sles4sap::console_redirection qw(connect_target_to_serial disconnect_target_from_serial);
+use sles4sap::azure_cli qw(az_resource_delete);
+
 
 sub post_fail_hook {
     if (get_var('SDAF_RETAIN_DEPLOYMENT')) {
@@ -27,6 +30,14 @@ sub post_fail_hook {
     az_login();
     sdaf_cleanup();
     disconnect_target_from_serial();
+
+    # Cleanup VM resources
+    my @resource_cleanup_list = @{find_deployer_resources(return_ids => 1)};
+    record_info('Resources destroy',
+        "Following resources are being destroyed:\n" . join("\n", @{find_deployer_resources()}));
+
+    az_resource_delete(ids => join(' ', @resource_cleanup_list),
+        resource_group => get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP'), timeout => '600');
 }
 
 1;

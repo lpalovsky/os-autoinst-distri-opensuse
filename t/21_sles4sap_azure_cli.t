@@ -592,4 +592,66 @@ subtest '[az_storage_account_create]' => sub {
 
 };
 
+subtest '[az_disk_create] Create disk by cloning' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { @calls = $_[0]; return; });
+
+    az_disk_create(resource_group => 'Pa_a_Pi', name => 'Od_Kuka_do_Kuka', source => 'Harvepino');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az disk create/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+    ok(grep(/--source Harvepino/, @calls), 'Check for argument "--source"');
+
+    az_disk_create(resource_group => 'Pa_a_Pi', name => 'Od_Kuka_do_Kuka', size_gb => '42');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/--size-gb 42/, @calls), 'Check for argument "--size-gb"');
+};
+
+subtest '[az_disk_create] Create empty disk defining size' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { @calls = $_[0]; return; });
+
+    az_disk_create(resource_group => 'Pa_a_Pi', name => 'Od_Kuka_do_Kuka', size_gb => '42');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/--size-gb 42/, @calls), 'Check for argument "--size-gb"');
+};
+
+
+subtest '[az_disk_create] Check exceptions' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { @calls = $_[0]; return; });
+
+    az_disk_create(resource_group => 'Pa_a_Pi', name => 'Od_Kuka_do_Kuka', size_gb => '42');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/--size-gb 42/, @calls), 'Check for argument "--size-gb"');
+};
+
+subtest '[az_resource_delete]' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @calls;
+    $azcli->redefine(assert_script_run => sub { @calls = $_[0]; return; });
+
+    az_resource_delete(resource_group => 'Pa_a_Pi', name => 'Od_Kuka_do_Kuka');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/az resource delete/, @calls), 'Test base command');
+    ok(grep(/--resource-group Pa_a_Pi/, @calls), 'Check for argument "--resource-group"');
+    ok(grep(/--name Od_Kuka_do_Kuka/, @calls), 'Check for argument "--name"');
+
+    az_resource_delete(resource_group => 'Pa_a_Pi', ids => 'od Kuka do Kuka');
+    note("CMD: " . join(' ', @calls));
+    ok(grep(/--ids od Kuka do Kuka/, @calls), 'Check for argument "--ids"');
+};
+
+subtest '[az_resource_delete]' => sub {
+    dies_ok { az_resource_delete(ids => 'od Kuka do Kuka') } "Dies with missing argument 'resource_group'";
+    dies_ok { az_resource_delete(resource_group => 'Pa_a_Pi') } "Dies with missing argument 'name'";
+    dies_ok { az_resource_delete(resource_group => 'Pa_a_Pi') } "Dies with missing argument 'ids'";
+    dies_ok { az_resource_delete(resource_group => 'Pa_a_Pi', ids => 'od Kuka do Kuka', name => 'Od_Kuka_do_Kuka') }
+    "Dies with both 'ids' and 'name' being defined";
+};
+
 done_testing;
