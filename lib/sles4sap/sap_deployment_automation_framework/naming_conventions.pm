@@ -31,9 +31,10 @@ our @EXPORT = qw(
   env_variable_file
   get_sdaf_config_path
   get_tfvars_path
-  generate_resource_group_name
+  sdaf_gen_resource_group_name
   convert_region_to_long
   convert_region_to_short
+  sdaf_gen_deployer_name
 );
 
 =head2 %sdaf_region_matrix
@@ -281,9 +282,9 @@ sub get_tfvars_path {
     return "$config_root_path/$file_names{$args{deployment_type}}";
 }
 
-=head2 generate_resource_group_name
+=head2 sdaf_gen_resource_group_name
 
-    generate_resource_group_name(deployment_type=>$deployment_type);
+    sdaf_gen_resource_group_name(deployment_type=>$deployment_type);
 
 B<$deployment_type>: Type of the deployment (workload_zone, sap_system, library... etc)
 
@@ -292,7 +293,7 @@ Resource group pattern: I<SDAF-OpenQA-[deployment type]-[deployment id]-[OpenQA 
 
 =cut
 
-sub generate_resource_group_name {
+sub sdaf_gen_resource_group_name {
     my (%args) = @_;
     my @supported_types = ('workload_zone', 'sap_system', 'library', 'deployer');
     croak "Unsupported deployment type: $args{deployment_type}\nCurrently supported ones are: @supported_types" unless
@@ -300,4 +301,22 @@ sub generate_resource_group_name {
     my $job_id = get_current_job_id();
 
     return join('-', 'SDAF', 'OpenQA', $args{deployment_type}, $job_id);
+}
+
+=head2 sdaf_gen_deployer_name
+
+    sdaf_gen_deployer_name([job_id=>$job_id]);
+
+B<job_id>: Specify test job ID in case that current test ID is not equal to ID of the job that created deployer VM.
+    Example: Connecting to deployer from dependency job.
+    Default: Current job ID
+
+Generates resource name for deployer VM in format B<test_id-OpenQA_Deployer_VM>.
+
+=cut
+
+sub sdaf_gen_deployer_name {
+    my (%args) = @_;
+    $args{job_id} //= get_current_job_id();
+    return "$args{job_id}-OpenQA_Deployer_VM"
 }

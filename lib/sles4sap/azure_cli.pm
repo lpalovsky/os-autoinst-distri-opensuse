@@ -34,7 +34,9 @@ our @EXPORT = qw(
   az_network_lb_rule_create
   az_vm_as_create
   az_vm_create
+  az_vm_delete
   az_vm_list
+  az_vm_disk_list
   az_vm_openport
   az_vm_wait_cloudinit
   az_vm_instance_view_get
@@ -46,6 +48,8 @@ our @EXPORT = qw(
   az_ipconfig_update
   az_ipconfig_pool_add
   az_storage_account_create
+  az_disk_create
+  az_disk_delete
 );
 
 
@@ -1015,3 +1019,132 @@ sub az_storage_account_create {
     assert_script_run($az_cmd);
 }
 
+=head2 az_disk_create
+
+    az_disk_create(resource_group=>$resource_group, name=>$name [, source=$source, tags="tag1=value1 tag2=value2"]);
+
+B<resource_group> Existing resource group name.
+
+B<source> Create disk by cloning snapshot
+
+B<name> Disk name
+
+B<tags> Additional tags to add to the disk resource. key=value pairs must be separated by empty space.
+    Example: az_disk_create(tags=>"some_tag=some_value another_tag=another_value")
+
+Creates az disk.
+
+=cut
+
+sub az_disk_create {
+    my (%args) = @_;
+    foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
+    my @az_command = ('az disk create',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}",
+    );
+    push @az_command, "--source $args{source}" if $args{source};
+    push @az_command, "--tags $args{tags}" if $args{tags};
+    assert_script_run(join(' ', @az_command));
+}
+
+=head2 az_disk_delete
+
+    az_disk_delete(resource_group=>$resource_group, disk_name=>$disk_name);
+
+B<resource_group> Existing resource group name.
+
+B<disk_name> Name of the dist to delete
+
+Deletes disk specified by disk name and resource group.
+
+=cut
+
+sub az_disk_delete {
+    my (%args) = @_;
+    foreach ('resource_group', 'disk_name') { croak("Argument < $_ > missing") unless $args{$_}; }
+    my @az_command = ('az disk delete',
+        "--resource-group $args{resource_group}",
+        "--disk_name $args{disk_name}",
+        '--yes'
+    );
+    assert_script_run(join(' ', @az_command));
+}
+
+=head2 az_vm_delete
+
+    az_vm_delete(resource_group=>$resource_group, name=>$name);
+
+B<resource_group> Existing resource group name.
+
+B<name> Name of the dist to delete
+
+Deletes VM specified by name and resource group.
+
+=cut
+
+sub az_vm_delete {
+    my (%args) = @_;
+    foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
+    my @az_command = ('az vm delete',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}",
+        '--yes'
+    );
+    assert_script_run(join(' ', @az_command));
+}
+
+=head2 az_vm_disk_list
+
+    az_vm_disk_list(resource_group=>$resource_group, name=>$name);
+
+B<resource_group> Existing resource group name.
+
+B<name> Name of the dist to delete
+
+Returns a structured hash with all disks related to the VM in format:
+    {
+      dataDisks: ['Data_disk_01', 'Data_disk_02'],
+      osDisk: "286765-OpenQA_Deployer_VM_OS"
+    }
+
+=cut
+
+sub az_vm_disk_list {
+    my (%args) = @_;
+    foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
+
+    my $az_cmd = join(' ',
+        'az vm show',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}",
+        '--query "storageProfile.{osDisk: [osDisk.name], dataDisks: dataDisks[].name}"',
+        '--output json'
+    );
+
+    return decode_json(script_output($az_cmd));
+}
+
+=head2 az_vm_list_ip_addresses
+
+    az_vm_list_ip_addresses(resource_group=>$resource_group, name=>$name);
+
+B<resource_group> Existing resource group name.
+
+B<name> Name of the dist to delete
+
+Returns list of all public IP address IDs associated with VM.
+
+=cut
+
+sub az_vm_list_ip_addresses {
+    my (%args) = @_;
+    foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
+    my @az_command = ('az vm list-ip-addresses',
+        "--resource-group $args{resource_group}",
+        "--name $args{name}",
+        '--query "[].virtualMachine.network.publicIpAddresses[].id"',
+        '--output json'
+    );
+    return decode_json(script_output(join(' ', @az_command)));
+}

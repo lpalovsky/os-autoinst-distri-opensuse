@@ -21,6 +21,8 @@ use Regexp::Common qw(net);
 use utils qw(write_sut_file file_content_replace);
 use Scalar::Util 'looks_like_number';
 use sles4sap::sap_deployment_automation_framework::naming_conventions;
+use sles4sap::azure_cli;
+use Mojo::JSON qw(decode_json);
 
 =head1 SYNOPSIS
 
@@ -54,7 +56,6 @@ B<SAP Systems>: Resource group containing SAP SUTs and related resources.
 our @EXPORT = qw(
   az_login
   sdaf_prepare_ssh_keys
-  sdaf_get_deployer_ip
   serial_console_diag_banner
   set_common_sdaf_os_env
   prepare_sdaf_project
@@ -308,30 +309,6 @@ variables is not an option since tests would constantly overwrite variables betw
 
 sub load_os_env_variables {
     assert_script_run('source ' . env_variable_file);
-}
-
-=head2 sdaf_get_deployer_ip
-
-    sdaf_get_deployer_ip(deployer_resource_group=>$deployer_resource_group);
-
-B<deployer_resource_group>: Deployer key vault name
-
-Retrieves public IP of the deployer VM.
-
-=cut
-
-sub sdaf_get_deployer_ip {
-    my (%args) = @_;
-    croak 'Missing "deployer_resource_group" argument' unless $args{deployer_resource_group};
-
-    my $vm_name = script_output("az vm list --resource-group $args{deployer_resource_group} --query [].name --output tsv");
-    my $az_query_cmd = join(' ', 'az', 'vm', 'list-ip-addresses', '--resource-group', $args{deployer_resource_group},
-        '--name', $vm_name, '--query', '"[].virtualMachine.network.publicIpAddresses[0].ipAddress"', '-o', 'tsv');
-
-    my $ip_addr = script_output($az_query_cmd);
-    croak "Not a valid ip addr: $ip_addr" unless grep /^$RE{net}{IPv4}$/, $ip_addr;
-    record_info('Deployer data', "Deployer resource group: $args{deployer_resource_group} \nDeployer VM IP: $ip_addr");
-    return $ip_addr;
 }
 
 =head2 sdaf_prepare_ssh_keys
@@ -745,7 +722,7 @@ sub sdaf_cleanup {
     my $remover_rc = 1;
     # Sap system needs to be destroyed before workload zone so order matters here.
     for my $deployment_type ('sap_system', 'workload_zone') {
-        my $resource_group = resource_group_exists(generate_resource_group_name(deployment_type => $deployment_type));
+        my $resource_group = resource_group_exists(sdaf_gen_resource_group_name(deployment_type => $deployment_type));
         unless ($resource_group) {
             record_info('Cleanup skip', "Resource group for deployment type '$deployment_type' does not exist. Skipping cleanup");
             next;
@@ -840,3 +817,29 @@ sub sdaf_ansible_verbosity_level {
     return '-' . 'v' x $verbosity_level if looks_like_number($verbosity_level) and $verbosity_level <= 6;
     return '-vvvv';    # Default set to "-vvvv"
 }
+
+# sub sdaf_destroy_deployer_vm {
+#     my (%args) = @_;
+#     foreach ('resource_group', 'deployer_name') {
+#         croak "Missing mandatory argument : <$_>" unless $args{$_};
+#     };
+#
+#     my %deployer_disk_list = az_vm_disk_list(resource_group=>$args{resource_group}, name=>$args{deployer_name});
+#     my @nic_list;
+#     my @public_ip_list = az_vm_list_ip_addresses(resource_group=>$args{resource_group}, name=>$args{deployer_name});
+#     my @nsg_list;
+#
+#     az_vm_delete(resource_group=>$args{resource_group}, name=>$args{deployer_name});
+#
+#     # Delete OS disk
+#     az_disk_delete(resource_group=>$args{resource_group}, disk_name=>$deployer_disk_list{osDisk});
+#     # Delete remaining disks
+#     foreach ($deployer_disk_list{dataDisks}) {
+#         az_disk_delete(resource_group=>$args{resource_group}, disk_name=>$_);
+#     }
+#
+#     assert_script_run('az network nic delete --ids ' . join(' ', @nic_list));
+#     assert_script_run('az network public-ip delete --ids' . join(' ', @public_ip_list));
+#     assert_script_run('az network nsg delete --ids' . join(' ', @nsg_list));
+#
+# }

@@ -10,6 +10,7 @@ use strict;
 use warnings;
 use testapi;
 use sles4sap::sap_deployment_automation_framework::deployment;
+use sles4sap::sap_deployment_automation_framework::deployment_connector;
 use sles4sap::console_redirection;
 use serial_terminal qw(select_serial_terminal);
 
@@ -25,7 +26,8 @@ sub run {
     assert_script_run('zypper in -y autossh');
 
     az_login();
-    my $deployer_ip = sdaf_get_deployer_ip(deployer_resource_group => get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP'));
+    my $deployment_id = find_deployment_id();
+    my $deployer_ip = get_deployer_ip(deployer_vm_name=>$deployment_id);
     # SDAF does not need privileged user to run.
     my $ssh_user = get_var('REDIRECT_TARGET_USER', 'azureadm');
     # Variables to share data between test modules.
