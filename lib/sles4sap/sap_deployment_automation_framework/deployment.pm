@@ -20,6 +20,7 @@ use Regexp::Common qw(net);
 use utils qw(write_sut_file file_content_replace);
 use Scalar::Util 'looks_like_number';
 use Mojo::JSON qw(decode_json);
+use YAML::PP;
 use sles4sap::sap_deployment_automation_framework::naming_conventions qw(
   homedir
   deployment_dir
@@ -73,6 +74,7 @@ our @EXPORT = qw(
   load_os_env_variables
   sdaf_cleanup
   sdaf_execute_playbook
+  read_inventory_file
 );
 
 
@@ -825,3 +827,20 @@ sub sdaf_ansible_verbosity_level {
     return '-vvvv';    # Default set to "-vvvv"
 }
 
+=head2 read_inventory_file
+
+    read_inventory_file($sap_inventory_file_path);
+
+B<inventory_file_path> SAP SID of the existing deployment. Default: get_var('SAP_SID')
+
+Returns full path to an existing ansible inventory file
+
+=cut
+
+sub read_inventory_file {
+    my ($inventory_file_path) = @_;
+    my $ypp = YAML::PP->new;
+    my $raw_file = script_output("cat $inventory_file_path");
+    my $yaml_data = $ypp->load_string($raw_file);
+    return $yaml_data;
+}
