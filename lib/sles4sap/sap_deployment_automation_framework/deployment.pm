@@ -13,13 +13,14 @@ use warnings;
 use testapi;
 use Exporter qw(import);
 use Carp qw(croak);
-use utils qw(write_sut_file);
 use Utils::Git qw(git_clone);
 use File::Basename;
 use Regexp::Common qw(net);
 use utils qw(write_sut_file file_content_replace);
 use Scalar::Util 'looks_like_number';
 use Mojo::JSON qw(decode_json);
+use mmapi qw(get_current_job_id);
+use sles4sap::azure_cli qw(az_keyvault_secret_show az_keyvault_secret_list);
 use sles4sap::sap_deployment_automation_framework::naming_conventions qw(
   homedir
   deployment_dir
@@ -29,6 +30,7 @@ use sles4sap::sap_deployment_automation_framework::naming_conventions qw(
   get_tfvars_path
   generate_resource_group_name
   convert_region_to_short
+  upload_inventory_filename
 );
 
 =head1 SYNOPSIS
@@ -62,7 +64,7 @@ B<SAP Systems>: Resource group containing SAP SUTs and related resources.
 
 our @EXPORT = qw(
   az_login
-  sdaf_prepare_ssh_keys
+  sdaf_prepare_private_key
   serial_console_diag_banner
   set_common_sdaf_os_env
   prepare_sdaf_project
@@ -73,6 +75,8 @@ our @EXPORT = qw(
   load_os_env_variables
   sdaf_cleanup
   sdaf_execute_playbook
+  read_uploaded_inventory
+  read_inventory_content
 );
 
 
@@ -88,7 +92,7 @@ Using C<'tee'> to redirect command output into log does not return code for exec
 This function transforms given command so the RC reflects exit code of the command itself instead of C<'tee'>.
 Function returns only string with transformed command, nothing is being executed.
 
-Command structure: "(command_to_execute 2>$1 | tee /log/file.log; exit ${PIPESTATUS[0]})"
+Command structure: "(command_to_execute 2>$1 | tee /log/file.txt; exit ${PIPESTATUS[0]})"
 
     'exit ${PIPESTATUS[0]}' - returns 'command_to_execute' return code instead of one from 'tee'
     (...) - puts everything into subshell to prevent 'exit' logging out of current shell
@@ -252,7 +256,7 @@ B<sap_sid>: SAP system ID. Default: 'SAP_SID'
 B<sdaf_tfstate_storage_account>: Storage account residing in library resource group.
 Location for stored tfstate files. Default 'SDAF_TFSTATE_STORAGE_ACCOUNT'
 
-B<sdaf_key_vault>: Key vault name inside Deployer resource group. Default 'SDAF_KEY_VAULT'
+B<sdaf_key_vault>: Key vault name inside Deployer resource group. Default 'SDAF_DEPLYOER_KEY_VAULT'
 
 Creates a file with common OS env variables required to run SDAF. File is sourced afterwards to make the values active.
 Keep in mind that values are lost after user logout (for example after disconnecting console redirection).
@@ -272,7 +276,7 @@ sub set_common_sdaf_os_env {
     $args{sdaf_region_code} //= convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION'));
     $args{sap_sid} //= get_required_var('SAP_SID');
     $args{sdaf_tfstate_storage_account} //= get_required_var('SDAF_TFSTATE_STORAGE_ACCOUNT');
-    $args{sdaf_key_vault} //= get_required_var('SDAF_KEY_VAULT');
+    $args{sdaf_key_vault} //= get_required_var('SDAF_DEPLYOER_KEY_VAULT');
 
     # This is used later filling up tfvars files.
     set_var('SDAF_REGION_CODE', $args{sdaf_region_code});
@@ -317,79 +321,45 @@ sub load_os_env_variables {
     assert_script_run('source ' . env_variable_file());
 }
 
-=head2 sdaf_prepare_ssh_keys
+=head2 sdaf_prepare_private_key
 
-    sdaf_prepare_ssh_keys(deployer_key_vault=>$deployer_key_vault);
+    sdaf_prepare_private_key(key_vault=>$key_vault [, ssh_key_filename>$ssh_key_filename]);
 
-B<deployer_key_vault>: Deployer key vault name
+B<key_vault>: Key vault name
 
-Retrieves public and private ssh key from DEPLOYER keyvault and sets up permissions.
+B<ssh_key_filename>: Target filename for retrieved ssh public key. Public key will be copied to ${HOME}/.ssh/. Default: id_rsa
+
+Retrieves public ssh key from specified keyvault and sets up permissions.
 
 =cut
 
-sub sdaf_prepare_ssh_keys {
+sub sdaf_prepare_private_key {
     my (%args) = @_;
-    croak 'Missing mandatory argument $args{deployer_key_vault}' unless $args{deployer_key_vault};
+    croak 'Missing mandatory argument $args{key_vault}' unless $args{key_vault};
+    $args{ssh_key_filename} //= 'id_rsa';
     my $home = homedir();
-    my %ssh_keys;
-    my $az_cmd_out = script_output(
-        "az keyvault secret list --vault-name $args{deployer_key_vault} --query [].name --output tsv | grep sshkey");
+    my $target_key_file = "$home/.ssh/$args{ssh_key_filename}";
 
-    foreach (split("\n", $az_cmd_out)) {
-        $ssh_keys{id_rsa} = $_ if grep(/sshkey$/, $_);
-        $ssh_keys{'id_rsa.pub'} = $_ if grep(/sshkey-pub$/, $_);
-    }
+    my @vault_secret_names = @{az_keyvault_secret_list(
+            key_vault => $args{key_vault},
+            query => '[?ends_with(name, \'sshkey\')].name',
+            output => 'json'
+    )};
 
-    foreach ('id_rsa', 'id_rsa.pub') {
-        croak "Couldn't retrieve '$_' from keyvault" unless $ssh_keys{$_};
-    }
+    die "Couldn't retrieve '$_' from keyvault" unless @vault_secret_names;
+    die "Multiple ssh keys found inside keyvault:\n" . join(', ', @vault_secret_names) unless @vault_secret_names == 1;
 
     assert_script_run("mkdir -p $home/.ssh");
     assert_script_run("chmod 700 $home/.ssh");
-    for my $key_file (keys %ssh_keys) {
-        az_get_ssh_key(
-            deployer_key_vault => $args{deployer_key_vault},
-            ssh_key_name => $ssh_keys{$key_file},
-            ssh_key_filename => $key_file
-        );
-    }
-    assert_script_run("chmod 600 $home/.ssh/id_rsa");
-    assert_script_run("chmod 644 $home/.ssh/id_rsa.pub");
-}
 
-=head2 az_get_ssh_key
-
-    az_get_ssh_key(deployer_key_vault=$deployer_key_vault, ssh_key_name=$key_name, ssh_key_filename=$ssh_key_filename);
-
-B<deployer_key_vault>: Deployer key vault name
-
-B<ssh_key_name>: SSH key name residing on keyvault
-
-B<ssh_key_filename>: Target filename for SSH key
-
-Retrieves SSH key from DEPLOYER keyvault.
-
-=cut
-
-sub az_get_ssh_key {
-    my (%args) = @_;
-    my $home = homedir();
-    my $cmd = join(' ',
-        'az', 'keyvault', 'secret', 'show',
-        '--vault-name', $args{deployer_key_vault},
-        '--name', $args{ssh_key_name},
-        '--query', 'value',
-        '--output', 'tsv', '>', "$home/.ssh/$args{ssh_key_filename}");
-
-    my $rc = 1;
-    my $retry = 3;
-    while ($rc) {
-        $rc = script_run($cmd, output => 'Retrieving SSH keys from Deployer keyvault');
-        last unless $rc;
-        die 'Failed to retrieve ssh key from keyvault' unless $retry;
-        $retry--;
-        sleep 5;
-    }
+    az_keyvault_secret_show(
+        key_vault => $args{key_vault},
+        name => $vault_secret_names[0],
+        output => 'tsv',
+        # This will ensure, that private key is not leaked in OpenQA output
+        write_to_file => $target_key_file
+    );
+    assert_script_run("chmod 600 $target_key_file");
 }
 
 =head2 serial_console_diag_banner
@@ -452,7 +422,7 @@ sub prepare_tfvars_file {
     assert_script_run($retrieve_tfvars_cmd);
     assert_script_run("test -f $tfvars_file");
     replace_tfvars_variables($tfvars_file);
-    upload_logs($tfvars_file, log_name => "$args{deployment_type}.tfvars");
+    upload_logs($tfvars_file, log_name => "$args{deployment_type}.tfvars.txt");
     return $tfvars_file;
 }
 
@@ -512,7 +482,7 @@ sub sdaf_execute_deployment {
 
     record_info('SDAF exe', "Executing '$args{deployment_type}' deployment: $deploy_command");
     my $rc;
-    my $output_log_file = log_dir() . "/deploy_$args{deployment_type}_attempt.log";
+    my $output_log_file = log_dir() . "/deploy_$args{deployment_type}_attempt.txt";
     my $attempt_no = 1;
     while ($attempt_no <= $args{retries}) {
         $output_log_file =~ s/attempt/attempt-$attempt_no/;
@@ -613,13 +583,13 @@ sub prepare_sdaf_project {
         branch => get_var('SDAF_GIT_AUTOMATION_BRANCH'),
         depth => '1',
         single_branch => 'yes',
-        output_log_file => log_dir() . '/git_clone_automation.log');
+        output_log_file => log_dir() . '/git_clone_automation.txt');
 
     git_clone(get_required_var('SDAF_GIT_TEMPLATES_REPO'),
         branch => get_var('SDAF_GIT_TEMPLATES_BRANCH'),
         depth => '1',
         single_branch => 'yes',
-        output_log_file => log_dir() . '/git_clone_templates.log');
+        output_log_file => log_dir() . '/git_clone_templates.txt');
 
     assert_script_run("cp -Rp sap-automation-samples/Terraform/WORKSPACES $deployment_dir/WORKSPACES");
     # Ensure correct directories are in place
@@ -701,7 +671,7 @@ sub sdaf_execute_remover {
         '--auto-approve');
 
     # capture command output into log file
-    my $output_log_file = log_dir() . "/cleanup_$args{deployment_type}.log";
+    my $output_log_file = log_dir() . "/cleanup_$args{deployment_type}.txt";
     $remover_cmd = log_command_output(command => $remover_cmd, log_file => $output_log_file);
 
     # SDAF must be executed from the profile directory, otherwise it will fail
@@ -790,7 +760,7 @@ sub sdaf_execute_playbook {
         '--ssh-common-args="-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=120"'
     );
 
-    my $output_log_file = log_dir() . "/$args{playbook_filename}" =~ s/.yaml|.yml/.log/r;
+    my $output_log_file = log_dir() . "/$args{playbook_filename}" =~ s/.yaml|.yml/.txt/r;
     my $playbook_file = join('/', deployment_dir(), 'sap-automation', 'deploy', 'ansible', $args{playbook_filename});
     my $playbook_cmd = join(' ', 'ansible-playbook', $playbook_options, $playbook_file);
 
@@ -825,3 +795,51 @@ sub sdaf_ansible_verbosity_level {
     return '-vvvv';    # Default set to "-vvvv"
 }
 
+=head2 read_inventory_content
+
+    read_inventory_content();
+
+B<inventory_content> Raw inventory file content
+
+Reads raw inventory file content and returns it as perl data structure
+
+=cut
+
+sub read_inventory_content {
+    my ($inventory_content) = @_;
+    croak 'Missing mandatory argument: $inventory_content' unless $inventory_content;
+    my $ypp = YAML::PP->new;
+    my $inventory_data = $ypp->load_string($inventory_content);
+    return $inventory_data;
+}
+
+=head2 read_uploaded_inventory
+
+    read_uploaded_inventory($deployment_id);
+
+B<$deployment_id> Deployment test ID
+
+Reads directly inventory file uploaded by deployment OpenQA job and returns content as perl data.
+Deployment test module publishes inventory file using B<upload_logs> and B<save_tmp_file> API calls.
+Result of B<save_tmp_file> is used by deployment job itself since it is not able to access own log files.
+Result of B<upload_logs> is used by other jobs. Be it MM chained jobs or by independent test which reuses existing infra.
+
+=cut
+
+sub read_uploaded_inventory {
+    my ($deployment_id) = @_;
+    my $url;
+    if (get_current_job_id eq $deployment_id) {
+        # deployment job cannot read file it uploaded itself using 'upload_logs' - they are not yet published
+        # it has to read one it uploaded using 'save_tmp_file()'
+        $url = autoinst_url('/files/' . upload_inventory_filename);
+    }
+    else
+    {
+        # this approach is useful for MM jobs and jobs which just reuse deployment from another test run
+        $url = 'http://' . testapi::host_ip() . "/tests/$deployment_id/file/" . upload_inventory_filename;
+    }
+
+    my $yaml_inventory = script_output("curl $url");
+    return(read_inventory_content($yaml_inventory));
+}

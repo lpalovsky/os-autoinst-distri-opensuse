@@ -126,6 +126,41 @@ subtest '[convert_region_to_short] Test invalid input' => sub {
     dies_ok { convert_region_to_short($_) } "Croak with invalid region name: $_" foreach @invalid_region_names;
 };
 
+subtest '[get_sdaf_inventory_path] Test exceptions' => sub {
+    my %arguments = (
+        vnet_code => 'Europe',
+        env_code => 'Africa',
+        sdaf_region_code => 'Australia',
+        sap_sid => 'Austria'
+    );
 
+    foreach (keys %arguments) {
+        my $original_value = $arguments{$_};
+        $arguments{$_} = undef;
+        dies_ok { get_sdaf_inventory_path(%arguments) } "Fail with missing parameter: '$_'";
+        $arguments{$_} = $original_value;
+    }
+};
+
+subtest '[get_sdaf_inventory_path]' => sub {
+    my $mock_lib = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::naming_conventions', no_auto => 1);
+    $mock_lib->redefine(find_deployment_id => sub { return '42'; });
+    $mock_lib->redefine(convert_region_to_short => sub { return 'Austria'; });
+    $mock_lib->redefine(get_sdaf_config_path => sub {
+            return '/tmp/Azure_SAP_Automated_Deployment_42/WORKSPACES/SYSTEM/LAB-SECE-DEP04-QES'; });
+
+    is get_sdaf_inventory_path(vnet_code => 'Europe', env_code => 'Africa', sdaf_region_code => 'Australia', sap_sid => 'Austria'),
+      '/tmp/Azure_SAP_Automated_Deployment_42/WORKSPACES/SYSTEM/LAB-SECE-DEP04-QES/Austria_hosts.yaml',
+      'Pass with returning correct deployment path.';
+};
+
+subtest '[sdaf_inventory_url]' => sub {
+    my $mock_lib = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::naming_conventions', no_auto => 1);
+    my $mockapi = Test::MockModule->new('testapi', no_auto => 1);
+    $mockapi->redefine(host_ip => sub { return '8.8.8.8'; });
+    $mock_lib->redefine(upload_inventory_filename => sub { return 'global_variables_only.yolo'; });
+    is sdaf_inventory_url(job_id => '42'), 'http://8.8.8.8/tests/42/file/global_variables_only.yolo',
+      'Return correct url';
+};
 
 done_testing;

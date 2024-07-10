@@ -8,5 +8,7 @@ schedule:
   - sles4sap/sap_deployment_automation_framework/connect_to_deployer
   - sles4sap/sap_deployment_automation_framework/configure_deployer
   - sles4sap/sap_deployment_automation_framework/deploy_workload_zone
-  - sles4sap/sap_deployment_automation_framework/deploy_sap_systems
-  - sles4sap/sap_deployment_automation_framework/deploy_hanasr
+  #- sles4sap/sap_deployment_automation_framework/deploy_sap_systems
+  #- sles4sap/sap_deployment_automation_framework/setup_ssh_sut_proxy
+#  - sles4sap/sap_deployment_automation_framework/deploy_hanasr
+

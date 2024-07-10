@@ -164,39 +164,6 @@ subtest '[serial_console_diag_banner] ' => sub {
     dies_ok { serial_console_diag_banner('exeCuTing deploYment' x 6) } 'Fail with string exceeds max number of characters';
 };
 
-subtest '[sdaf_prepare_ssh_keys]' => sub {
-    my $ms_sdaf = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::deployment', no_auto => 1);
-    my $get_ssh_command;
-    my %private_key;
-    my %pubkey;
-    $ms_sdaf->redefine(script_run => sub { return 0; });
-    $ms_sdaf->redefine(homedir => sub { return '/home/dir/'; });
-    $ms_sdaf->redefine(assert_script_run => sub { return 0; });
-    $ms_sdaf->redefine(script_output => sub {
-            $get_ssh_command = $_[0] if grep /keyvault/, @_;
-            return "
-LAB-SECE-DEP05-sshkey
-LAB-SECE-DEP05-sshkey-pub
-LAB-SECE-DEP05-ssh
-"
-    });
-    $ms_sdaf->redefine(az_get_ssh_key => sub {
-            %private_key = @_ if grep /sshkey$/, @_;
-            %pubkey = @_ if grep /sshkey-pub$/, @_;
-    });
-
-    sdaf_prepare_ssh_keys(deployer_key_vault => 'LABSECEDEP05userDDF');
-    is $get_ssh_command, 'az keyvault secret list --vault-name LABSECEDEP05userDDF --query [].name --output tsv | grep sshkey',
-      'Return correct command for retrieving private key';
-    is $pubkey{ssh_key_name}, 'LAB-SECE-DEP05-sshkey-pub', 'Public key';
-    is $private_key{ssh_key_name}, 'LAB-SECE-DEP05-sshkey', 'Private key';
-
-    dies_ok { sdaf_prepare_ssh_keys() } 'Fail with missing deployer key vault argument';
-
-    $ms_sdaf->redefine(script_output => sub { return 1 });
-    dies_ok { sdaf_prepare_ssh_keys(deployer_key_vault => 'LABSECEDEP05userDDF') } 'Fail with not keyfile being found';
-};
-
 subtest '[set_common_sdaf_os_env]' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::deployment', no_auto => 1);
     my %arguments = (
@@ -482,5 +449,27 @@ subtest '[sdaf_execute_playbook] Command verbosity' => sub {
 
     undef_variables();
 };
+
+subtest '[sdaf_prepare_private_key] Test exceptions' => sub {
+    my $mock_function = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::deployment', no_auto => 1);
+    $mock_function->redefine(az_keyvault_secret_list => sub { return; });
+    dies_ok { sdaf_prepare_private_key() } 'Croak with missing mandatory argument: key_vault';
+    dies_ok { sdaf_prepare_private_key(key_vault => 'Lestrange') } 'Dies if no SSH key name was found';
+
+    $mock_function->redefine(az_keyvault_secret_list => sub { return ['Helgas_cup', 'golden_cup', 'another_golden_cup', 'lot_of_cloned_cups']; });
+    dies_ok { sdaf_prepare_private_key(key_vault => 'Lestrange') } 'Dies if more than one key is found';
+};
+
+#
+# subtest '[sdaf_prepare_private_key] Check secret listing command' => sub {
+#     my $ms_sdaf = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::deployment', no_auto => 1);
+#     my $az_cmd;
+#     $ms_sdaf->redefine(homedir => sub { return '/home/tux'; });
+#     $ms_sdaf->redefine(script_output => sub { $az_cmd = $_[0]; return 'tuxtuxtux'; });
+#     $ms_sdaf->redefine(assert_script_run => sub { return 0; });
+#     $ms_sdaf->redefine(az_keyvault_secret_show => sub { return 0; });
+#
+#
+# };
 
 done_testing;

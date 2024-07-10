@@ -59,6 +59,7 @@ sub run {
         resource_group => $deployer_resource_group,
         name => $deployer_disk_name,
         source => $snapshot_source_disk,
+        timeout => '300',
         tags => join(' ', @deployment_tags)
     );
 

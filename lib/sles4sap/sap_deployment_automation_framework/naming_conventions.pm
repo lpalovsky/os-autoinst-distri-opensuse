@@ -32,10 +32,12 @@ our @EXPORT = qw(
   env_variable_file
   get_sdaf_config_path
   get_tfvars_path
+  get_sdaf_inventory_path
   generate_resource_group_name
   convert_region_to_long
   convert_region_to_short
   generate_deployer_name
+  upload_inventory_filename
 );
 
 =head2 %sdaf_region_matrix
@@ -317,4 +319,55 @@ sub generate_deployer_name {
     my (%args) = @_;
     $args{job_id} //= get_current_job_id();
     return "$args{job_id}-OpenQA_Deployer_VM";
+}
+
+=head2 get_sdaf_inventory_path
+
+    get_sdaf_inventory_path(
+        env_code=>$env_code,
+        sdaf_region_code=>$sdaf_region_code,
+        sap_sid=>$sap_sid,
+        vnet_code=>$vnet_code
+    );
+
+B<env_code>:  SDAF parameter for environment code (for our purpose we can use 'LAB')
+
+B<sdaf_region_code>: SDAF parameter to choose PC region. Note SDAF is using internal abbreviations (SECE = swedencentral)
+
+B<sap_sid> SAP SID of the existing deployment.
+
+B<vnet_code>: SDAF parameter for virtual network code. Library and deployer use different vnet than SUT env
+
+Returns full path to an existing ansible inventory file
+
+=cut
+
+sub get_sdaf_inventory_path {
+    my (%args) = @_;
+    foreach ('env_code', 'sdaf_region_code', 'sap_sid', 'vnet_code') {
+        croak "Missing mandatory argument: $_" unless $args{$_};
+    }
+
+    my $config_root_path = get_sdaf_config_path(
+        deployment_type => 'sap_system',
+        sap_sid => $args{sap_sid},
+        env_code => $args{env_code},
+        vnet_code => $args{vnet_code},
+        sdaf_region_code => $args{sdaf_region_code},    # converts full region name to SDAF abbreviation
+        job_id => find_deployment_id()
+    );
+
+    return "$config_root_path/$args{sap_sid}_hosts.yaml";
+}
+
+=head2 upload_inventory_filename
+
+    upload_inventory_filename();
+
+Returns SDAF inventory filename to be used for log uploads. Ensures naming being consistent.
+
+=cut
+
+sub upload_inventory_filename {
+    return ('sdaf_inventory_file.yaml');
 }

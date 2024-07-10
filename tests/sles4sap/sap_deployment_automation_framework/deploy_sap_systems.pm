@@ -12,9 +12,21 @@ use parent 'sles4sap::sap_deployment_automation_framework::basetest';
 
 use strict;
 use warnings;
-use sles4sap::sap_deployment_automation_framework::deployment;
-use sles4sap::sap_deployment_automation_framework::naming_conventions;
-use sles4sap::console_redirection;
+use sles4sap::sap_deployment_automation_framework::deployment
+  qw(
+  serial_console_diag_banner
+  load_os_env_variables
+  prepare_tfvars_file
+  sdaf_prepare_private_key
+  get_os_variable
+  set_os_variable
+  az_login
+  sdaf_execute_deployment);
+use sles4sap::sap_deployment_automation_framework::naming_conventions
+  qw(generate_resource_group_name get_sdaf_inventory_path convert_region_to_short upload_inventory_filename);
+use sles4sap::console_redirection
+  qw(connect_target_to_serial disconnect_target_from_serial);
+use sles4sap::azure_cli qw(az_keyvault_list);
 use serial_terminal qw(select_serial_terminal);
 use testapi;
 
@@ -48,7 +60,19 @@ sub run {
     az_login();
     sdaf_execute_deployment(deployment_type => 'sap_system', timeout => 3600);
 
-    # diconnect the console
+    # Upload inventory file into logs.
+    record_info('SSH Proxy', 'Configuring ssh proxy to SUT');
+    my $inventory_file = get_sdaf_inventory_path(
+        vnet_code => get_required_var('SDAF_WORKLOAD_VNET_CODE'),
+        env_code => get_required_var('SDAF_ENV_CODE'),
+        sdaf_region_code => convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION')),
+        sap_sid => get_required_var('SAP_SID'));
+    # Upload inventory as log
+    upload_logs($inventory_file, log_name => upload_inventory_filename);
+    # Save as tmp - other test modules can access it later this way
+    save_tmp_file(upload_inventory_filename, script_output("cat $inventory_file"));
+
+    # Diconnect the console from deployer VM
     disconnect_target_from_serial();
 
     # reset temporary variables

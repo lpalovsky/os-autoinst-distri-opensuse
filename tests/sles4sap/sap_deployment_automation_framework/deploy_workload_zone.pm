@@ -12,9 +12,16 @@ use parent 'sles4sap::sap_deployment_automation_framework::basetest';
 
 use strict;
 use warnings;
-use sles4sap::sap_deployment_automation_framework::deployment;
-use sles4sap::sap_deployment_automation_framework::naming_conventions;
-use sles4sap::console_redirection;
+use sles4sap::sap_deployment_automation_framework::deployment qw(
+  load_os_env_variables
+  serial_console_diag_banner
+  set_os_variable
+  prepare_tfvars_file
+  az_login
+  sdaf_execute_deployment);
+use sles4sap::sap_deployment_automation_framework::naming_conventions
+  qw(generate_resource_group_name );
+use sles4sap::console_redirection qw(connect_target_to_serial disconnect_target_from_serial);
 use serial_terminal qw(select_serial_terminal);
 use testapi;
 

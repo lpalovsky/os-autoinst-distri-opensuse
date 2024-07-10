@@ -53,6 +53,9 @@ our @EXPORT = qw(
   az_network_peering_delete
   az_disk_create
   az_resource_delete
+  az_keyvault_secret_show
+  az_keyvault_secret_list
+  az_keyvault_list
 );
 
 
@@ -1222,7 +1225,7 @@ sub az_network_peering_delete {
 =head2 az_disk_create
 
     az_disk_create(resource_group=>$resource_group, name=>$name
-        [, size_gb=>60, source=$source, tags="tag1=value1 tag2=value2"]);
+        [, timeout=300, size_gb=>60, source=$source, tags="tag1=value1 tag2=value2"]);
 
 
 Creates new disk device either by specifying B<size_gb> or by cloning another disk device using argument B<source>.
@@ -1236,6 +1239,8 @@ B<source> Create disk by cloning snapshot
 
 B<size_gb> New disk size
 
+B<timeout> Override default timeout for assert_script_run (90s)
+
 B<tags> Additional tags to add to the disk resource. key=value pairs must be separated by empty space.
     Example: az_disk_create(tags=>"some_tag=some_value another_tag=another_value")
 
@@ -1246,7 +1251,6 @@ sub az_disk_create {
     foreach ('resource_group', 'name') { croak("Argument < $_ > missing") unless $args{$_}; }
     croak "Arguments 'size_gb' and 'source' are mutually exclusive" if $args{size_gb} and $args{source};
     croak "Argument 'size_gb' or 'source' has to be specified" unless $args{size_gb} or $args{source};
-
     my @az_command = ('az disk create',
         "--resource-group $args{resource_group}",
         "--name $args{name}",
@@ -1254,7 +1258,7 @@ sub az_disk_create {
     push @az_command, "--source $args{source}" if $args{source};
     push @az_command, "--size-gb $args{size_gb}" if $args{size_gb};
     push @az_command, "--tags $args{tags}" if $args{tags};
-    assert_script_run(join(' ', @az_command));
+    assert_script_run(join(' ', @az_command), timeout => $args{timeout});
 }
 
 =head2 az_resource_delete
@@ -1288,4 +1292,99 @@ sub az_resource_delete {
     push(@az_command, "--ids $args{ids}") if $args{ids};
 
     assert_script_run(join(' ', @az_command), timeout => $args{timeout});
+}
+
+=head2 az_keyvault_secret_show
+
+    az_keyvault_secret_show(key_vault=>$key_vault, name=>$name [, output=>json]);
+
+Retrieves and returns value for a secret in a keyvault.
+
+B<key_vault>: Key vault name
+
+B<name>: Vault secret name for which value will be retrieved
+
+B<output>: Output format. Default: tsv (json tends to mangle up ssh keys)
+
+B<write_to_file>: Write output into a specified file. This should prevent secret shown in OpenQA output.
+    Patch to specified file **MUST** exist.
+
+=cut
+
+sub az_keyvault_secret_show {
+    my (%args) = @_;
+    foreach ('key_vault', 'name') {
+        croak "Missing mandatory argument: \$args{$_}" unless $args{$_};
+    }
+    $args{output} //= 'tsv';
+
+    my $cmd = join(' ',
+        'az', 'keyvault', 'secret', 'show',
+        '--vault-name', $args{key_vault},
+        '--name', $args{name},
+        '--query', 'value',
+        '--output', $args{output});
+
+    return script_output($cmd) unless $args{write_to_file};
+    assert_script_run("$cmd >> $args{write_to_file}");
+}
+
+=head2 az_keyvault_secret_list
+
+    az_keyvault_secret_list(key_vault=>$key_vault, name=>$name [, output=>json]);
+
+Returns ARRAYREF of secrets belonging to a keyvault.
+
+B<key_vault>: Key vault name
+
+B<query>: Custom query. Default: Returns list of secret names
+
+B<output>: Output format. Default: json
+
+=cut
+
+sub az_keyvault_secret_list {
+    my (%args) = @_;
+    croak "Missing mandatory argument: \$args{key_vault}" unless $args{key_vault};
+    $args{query} //= '[].name';
+    $args{output} //= 'json';
+
+    my $az_cmd = join(' ',
+        'az keyvault secret list',
+        "--vault-name $args{key_vault}",
+        "--query \"$args{query}\"",
+        "--output $args{output}"
+    );
+
+    return decode_json(script_output($az_cmd));
+}
+
+=head2 az_keyvault_list
+
+    az_keyvault_list(resource_group=>'ResourceGroupName' [, output=>'json', query=>'[].name', write_to_file=]);
+
+Returns ARRAYREF of vault names belonging to a resource group.
+
+B<resource_group>: Resource group to list vaults from
+
+B<query>: Custom query. Default: Returns list of keyvault names
+
+B<output>: Output format. Default: json
+
+=cut
+
+sub az_keyvault_list {
+    my (%args) = @_;
+    croak "Missing mandatory argument: \$args{resource_group}" unless $args{resource_group};
+    $args{query} //= '[].name';
+    $args{output} //= 'json';
+
+    my $az_cmd = join(' ',
+        'az keyvault list',
+        "--resource-group $args{resource_group}",
+        "--query \"$args{query}\"",
+        "--output $args{output}"
+    );
+
+    return decode_json(script_output($az_cmd));
 }

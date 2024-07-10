@@ -28,20 +28,24 @@ use Exporter qw(import);
 use Mojo::JSON qw(decode_json);
 use Scalar::Util qw(looks_like_number);
 use Carp qw(croak);
+use YAML::PP;
 use mmapi qw(get_parents get_job_autoinst_vars get_children get_job_info get_current_job_id);
 use Data::Dumper;
 
 our @EXPORT = qw(
   get_deployer_vm
   get_deployer_ip
-  check_deployer_ssh
+  check_ssh_availability
   find_deployment_id
   find_deployer_resources
+  ssh_config_entry_add
+  prepare_ssh_config
+  verify_ssh_proxy_connection
 );
 
-=head2 check_deployer_ssh
+=head2 check_ssh_availability
 
-    check_deployer_ssh($deployer_ip_addr [, ssh_port=>42 ,$wait_started=>'true', wait_timeout=>'42']);
+    check_ssh_availability($deployer_ip_addr [, ssh_port=>42 ,$wait_started=>'true', wait_timeout=>'42']);
 
 Checks if deployer VM is running and listening on ssh port. Returns found state.
 Optionally function can wait till VM reaches requested state until timeout.
@@ -57,7 +61,7 @@ B<ssh_port>: Specify custom SSH port number. Default: 22
 
 =cut
 
-sub check_deployer_ssh {
+sub check_ssh_availability {
     my ($deployer_ip_addr, %args) = @_;
     croak 'Deployer IP not specified.' unless $deployer_ip_addr;
     $args{wait_timeout} //= 180;
@@ -105,7 +109,7 @@ sub get_deployer_ip {
     my $ip_addr = decode_json(script_output($az_query_cmd));
     # Find first IP connection working
     for my $ip (@{$ip_addr}) {
-        return $ip if check_deployer_ssh($ip, wait_started => 'yes');
+        return $ip if check_ssh_availability($ip, wait_started => 'yes');
     }
     return undef;
 }
@@ -234,4 +238,117 @@ sub find_deployer_resources {
     my @resource_list = @{decode_json(script_output($az_cmd))};
 
     return \@resource_list;
+}
+
+=head2 ssh_config_entry_add
+
+    ssh_config_entry_add(entry_name=$entry_name, hostname=>$hostname
+        [, identity_file=>$identity_file, identities_only=><bool>, proxy_jump=$proxy_jump, batch_mode=>bool]);
+
+B<entry_name> Config entry name. This name can be used instead of host/IP in ssh command. Example: ssh root@<entry_name>
+
+B<user> Define ssh username
+
+B<hostname> Target hostname or IP addr
+
+B<identity_file> Full path to SSH private key
+
+B<identities_only> If true, SSH will only attempt passwordless login
+
+B<batch_mode> If true, all SSH interactive features will be disabled. Test won't have to wait for timeouts.
+
+B<proxy_jump> Jump host hostname, IP addr or point to another entry in config file
+
+B<strict_host_key_checking> Turn off host key check
+
+Add host entry into ~/.ssh/config
+
+=cut
+
+sub ssh_config_entry_add {
+    my (%args) = @_;
+    my $config_path = '~/.ssh/config';
+    my @mandatory_args = qw(entry_name hostname);
+    foreach (@mandatory_args) {
+        croak "Missing mandatory argument: $_" unless $args{$_};
+    }
+
+    # passwordless, non-interactive ssh by default
+    $args{batch_mode} //= 'yes';
+    $args{identities_only} //= 'yes';
+
+    my @file_contents = (
+        "Host $args{entry_name}",
+        "  HostName $args{hostname}",
+        "  IdentitiesOnly $args{identities_only}",
+        "  BatchMode $args{batch_mode}"
+    );
+    push(@file_contents, "  User $args{user}") if $args{user};
+    push(@file_contents, "  IdentityFile $args{identity_file}") if $args{identity_file};
+    push(@file_contents, "  ProxyJump $args{proxy_jump}") if $args{proxy_jump};
+    push(@file_contents, "  StrictHostKeyChecking $args{strict_host_key_checking}") if $args{strict_host_key_checking};
+    assert_script_run("echo \"$_\" >> $config_path", quiet=>1) foreach @file_contents;
+}
+
+=head2 prepare_ssh_config
+
+    prepare_ssh_config(inventory_data=>HASHREF, jump_host=>10.10.10.10, identity_file=>'/home/tux/id_rsa');
+
+Reads parsed and referenced SDAF inventory data and composes F<~/.ssh/config> entry for each host.
+In case of SDAF you need to specify B<jump_host> if you want to set this up on worker VM and access SUT via SSH proxy.
+For parsing inventory data check function B<read_inventory_content> inside:
+I<lib/sles4sap/sap_deployment_automation_framework/deployment.pm>
+
+B<inventory_data> SDAF inventory content in referenced perl data structure.
+
+B<jump_host> hostname, IP address or F<~/.ssh/config> entry pointing to jumphost. Keyless SSH must be working.
+
+B<identity_file> Full path to SSH private key
+
+=cut
+
+sub prepare_ssh_config {
+    my (%args) = @_;
+    foreach ('inventory_data', 'jump_host', 'identity_file') {
+        croak "Missing mandatory argument '\$args{$_}'" unless $args{$_};
+    }
+
+    # Add Jumphost first
+    ssh_config_entry_add(
+        entry_name    => 'deployer_jump',
+        user          => 'azureadm',
+        hostname      => $args{jump_host},
+        identities_only => 'yes',
+        identity_file => '~/.ssh/id_rsa'
+    );
+
+    # Add all SUT systems defined in inventory file
+    for my $instance_type (keys(%{$args{inventory_data}})) {
+        my $hosts = $args{inventory_data}->{$instance_type}{hosts};
+        for my $hostname (keys %$hosts) {
+            my $host_data = $hosts->{$hostname};
+            ssh_config_entry_add(
+                entry_name               => "$hostname", # This allows both hostname and IP login
+                user                     => $host_data->{ansible_user},
+                hostname                 => $host_data->{ansible_host},
+                identity_file            => $args{identity_file},
+                identities_only          => 'yes',
+                proxy_jump               => 'deployer_jump',
+                strict_host_key_checking => 'no'
+            );
+        }
+    }
+    record_info('SSH config', "SSH proxy setup added into '~/.ssh/config':\n" . script_output('cat ~/.ssh/config'));
+}
+
+sub verify_ssh_proxy_connection {
+    my (%args) = @_;
+    for my $instance_type (keys(%{$args{inventory_data}})) {
+        my $hosts = $args{inventory_data}->{$instance_type}{hosts};
+        for my $hostname (keys %$hosts){
+            # run simple 'hostname' command on each host
+            assert_script_run("ssh $hostname hostname", quiet=>1);
+            record_info('SSH check', "SSH proxy connection to $hostname: OK");
+        }
+    }
 }

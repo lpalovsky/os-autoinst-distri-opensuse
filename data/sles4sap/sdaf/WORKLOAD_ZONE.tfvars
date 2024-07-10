@@ -64,7 +64,7 @@ network_logical_name = "%SDAF_VNET_CODE%"
 #network_arm_id = ""
 
 # network_address_space is a mandatory parameter when an existing Virtual network is not used
-network_address_space = "10.10.0.0/16"
+network_address_space = "10.10.0.0/27"
 
 # use_private_endpoint is a boolean flag controlling if the key vaults and storage accounts have private endpoints
 use_private_endpoint = false

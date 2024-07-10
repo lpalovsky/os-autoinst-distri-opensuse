@@ -29,6 +29,7 @@ use sles4sap::sap_deployment_automation_framework::deployment
 use sles4sap::sap_deployment_automation_framework::naming_conventions
   qw(get_sdaf_config_path
   convert_region_to_short
+  get_sdaf_inventory_path
   );
 use sles4sap::console_redirection
   qw(connect_target_to_serial
@@ -50,6 +51,10 @@ sub run {
         sdaf_region_code => convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION')),
         sap_sid => get_required_var('SAP_SID')
     );
+    my $deployer_resource_group = get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP');
+    my $deployment_id = find_deployment_id(deployer_resource_group => $deployer_resource_group);
+    my $inventory_content = read_uploaded_inventory($deployment_id);
+
 
     # List of playbooks (and their options) to be executed. Keep them in list to be ordered. Each entry must be an ARRAYREF.
     # Playbook description is here as well: https://learn.microsoft.com/en-us/azure/sap/automation/run-ansible?tabs=linux
@@ -78,8 +83,9 @@ sub run {
     for my $playbook_options (@execute_playbooks) {
         sdaf_execute_playbook(%{$playbook_options}, sdaf_config_root_dir => $sdaf_config_root_dir);
     }
-
     disconnect_target_from_serial();
+
+    script_output('ssh ');
     serial_console_diag_banner('Module sdaf_deploy_hanasr.pm : stop');
 }
 

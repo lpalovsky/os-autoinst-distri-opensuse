@@ -710,4 +710,104 @@ subtest '[az_resource_delete]' => sub {
     "Dies with both 'ids' and 'name' being defined";
 };
 
+subtest '[az_keyvault_secret_show] Check for mandatory args' => sub {
+    dies_ok { az_keyvault_secret_show(name => 'Kuko') } 'Croak with missing mandatory argument: key_vault';
+    dies_ok { az_keyvault_secret_show(key_vault => 'Patricia') } 'Croak with missing mandatory argument: name';
+};
+
+subtest '[az_keyvault_secret_show] Check command composition' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @command;
+    $azcli->redefine(script_output => sub { @command = $_[0]; return 'Od Kuka do Kuka'; });
+
+    az_keyvault_secret_show(name => 'Kuko', key_vault => 'Patricia');
+    note("\n --> " . join("\n --> ", @command));
+    ok(grep(/az keyvault secret show/, @command), 'Check main command');
+    ok(grep(/--vault-name Patricia/, @command), 'Check --vault-name option');
+    ok(grep(/--name Kuko/, @command), 'Check --name option');
+    ok(grep(/--output tsv/, @command), 'Check --output option');
+
+    az_keyvault_secret_show(name => 'Kuko', key_vault => 'Patricia', output => 'as_a_poem');
+    note("\n --> " . join("\n --> ", @command));
+    ok(grep(/--output as_a_poem/, @command), 'Check --output option');
+};
+
+subtest '[az_keyvault_secret_list] Check for mandatory args' => sub {
+    dies_ok { az_keyvault_secret_list() } 'Croak with missing mandatory argument: key_vault';
+};
+
+subtest '[az_keyvault_secret_list] Check command composition' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @command;
+    my $mock_result = '
+[
+  "deployer-kv-name",
+  "LAB-SECE-SAP04-sid-password",
+  "LAB-SECE-SAP04-sid-sshkey",
+  "LAB-SECE-SAP04-sid-sshkey-pub",
+  "LAB-SECE-SAP04-sid-username",
+  "LAB-SECE-SAP04-witness-accesskey",
+  "LAB-SECE-SAP04-witness-name"
+]';
+    $azcli->redefine(script_output => sub { @command = $_[0]; return; });
+    $azcli->redefine(decode_json => sub { return; });
+
+    az_keyvault_secret_list(key_vault => 'Patricia');
+    note("\n --> " . join("\n --> ", @command));
+    ok(grep(/az keyvault secret list/, @command), 'Check main command');
+    ok(grep(/--vault-name Patricia/, @command), 'Check --vault-name option');
+    ok(grep(/--query \"\[].name"/, @command), 'Check --name option');
+    ok(grep(/--output json/, @command), 'Check --output option');
+
+    # Check optional arguments
+    az_keyvault_secret_list(key_vault => 'Patricia', query => '[?ends_with(name, \'Kuko\')]', output => 'as_a_song');
+    note("\n --> " . join("\n --> ", @command));
+    ok(grep(/--query \"\[\?ends_with\(name, \'Kuko\'\)\]\"/, @command), 'Check --name option');
+    ok(grep(/--output as_a_song/, @command), 'Check --output option');
+};
+
+subtest '[az_keyvault_secret_list] Check returned value' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my $mock_result = '
+[
+  "deployer-kv-name",
+  "LAB-SECE-SAP04-sid-password",
+  "LAB-SECE-SAP04-sid-sshkey"
+]';
+    $azcli->redefine(script_output => sub { return $mock_result; });
+    is ref(az_keyvault_secret_list(key_vault => 'Patricia')), 'ARRAY', 'Return value in ARRAYREF';
+    is @{az_keyvault_secret_list(key_vault => 'Patricia')}, 3, 'Return 3 elements from mock result';
+};
+
+subtest '[az_keyvault_list] Check returned value' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my $mock_result = '
+[
+  "LestrangeVault",
+  "Vault687",
+  "Vault713"
+]';
+    $azcli->redefine(script_output => sub { return $mock_result; });
+    is ref(az_keyvault_list(resource_group => 'Gringotts')), 'ARRAY', 'Return value in ARRAYREF';
+    is @{az_keyvault_list(resource_group => 'Gringotts')}, 3, 'Return 3 elements from mock result';
+};
+
+subtest '[az_keyvault_list] Check az command' => sub {
+    my $azcli = Test::MockModule->new('sles4sap::azure_cli', no_auto => 1);
+    my @command;
+    $azcli->redefine(script_output => sub { @command = $_[0]; return; });
+    $azcli->redefine(decode_json => sub { return; });
+
+    az_keyvault_list(resource_group => 'Gringotts');
+    note("\n --> " . join("\n --> ", @command));
+    ok(grep(/az keyvault list/, @command), 'Check main command');
+    ok(grep(/--resource-group Gringotts/, @command), 'Check --resource-group argument');
+    ok(grep(/--query \"\[].name\"/, @command), 'Check --query argument');
+    ok(grep(/--output json/, @command), 'Check --output argument');
+};
+
+subtest '[az_keyvault_list] Check exceptions' => sub {
+    dies_ok { az_keyvault_list() } 'Die with missing argument "resource_group"';
+};
+
 done_testing;
