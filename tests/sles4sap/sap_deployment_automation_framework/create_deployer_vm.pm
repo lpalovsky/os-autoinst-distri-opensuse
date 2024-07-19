@@ -32,6 +32,7 @@ sub test_flags {
 
 sub run {
     select_serial_terminal();
+    assert_script_run('Please fail');
     serial_console_diag_banner('Module sdaf_clone_deployer.pm : start');
 
     my $deployer_resource_group = get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP');

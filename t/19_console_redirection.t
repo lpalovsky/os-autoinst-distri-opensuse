@@ -16,7 +16,7 @@ sub unset_vars {
     set_var($_, undef) foreach @variables;
 }
 
-subtest '[connect_target_to_serial] Expected failures' => sub {
+subtest '[connect_target_to_serial] Test exceptions' => sub {
     my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
     $redirect->redefine(enter_cmd => sub { return 1; });
     $redirect->redefine(handle_login_prompt => sub { return 1; });

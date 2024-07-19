@@ -27,8 +27,6 @@ our @EXPORT = qw(
 );
 
 my $ssh_opt = '-o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax=120';
-# Create ssh key into /tmp so all users have access to it.
-our $reverse_ssh_key_base_name = '/tmp/id_reverse_openqa';
 
 =head2 handle_login_prompt
 
@@ -90,32 +88,11 @@ sub redirection_init {
     $args{ssh_tunnel_port} //= '22022';
 
     croak 'Package autossh is not installed' if script_run('rpm -qi autossh');
-
     record_info('Redirection init', "Preparing console redirection to: $args{destination_ip}");
 
     # This should get base VM id before any redirection happening
     # ID serves as identification for origin point where redirection is not anymore in place.
     set_var('BASE_VM_ID', script_output 'cat /etc/machine-id');
-
-    # Prepare keyless access from remote host to worker VM
-    connect_target_to_serial(%args);
-    script_run("sudo rm $reverse_ssh_key_base_name*", quiet => 1);
-    # remove any existing entry in known_hosts file
-    script_run("ssh-keygen -R [localhost]:$args{ssh_tunnel_port} -f ~/.ssh/known_hosts", quiet => 1);
-    script_run("sudo ssh-keygen -R [localhost]:$args{ssh_tunnel_port} -f /root/.ssh/known_hosts", quiet => 1);
-    assert_script_run("ssh-keygen -f $reverse_ssh_key_base_name -t rsa -b 2048 -N ''");
-    my $public_key = script_output("cat $reverse_ssh_key_base_name.pub", quiet => 1);
-    disconnect_target_from_serial(%args);
-
-    # Add cloud VM key to worker VM authorized keys
-    assert_script_run("echo \"$public_key\" >> ~/.ssh/authorized_keys", quiet => 1);
-
-    # Forward common ports.
-    # Starts permanent reverse SSH connection from remote VM to worker VM.
-    remote_port_forward(destination_port => $args{ssh_tunnel_port},
-        ssh_user => $args{ssh_user},
-        destination_ip => 'localhost',
-        monitor_port => '20000');
 
     # Port below is also required to access resources using generated port. Check QEMUPORT for details
     # https://github.com/os-autoinst/os-autoinst/blob/master/doc/backend_vars.asciidoc
@@ -123,6 +100,13 @@ sub redirection_init {
         ssh_user => $args{ssh_user},
         destination_ip => get_var('QEMU_HOST_IP', '10.0.2.2'),
         monitor_port => '20001');
+
+    # Test if redirection works first
+    connect_target_to_serial();
+    disconnect_target_from_serial();
+
+    # This parameter can help for example cleanup job to detect if redirection is ready or not
+    set_var('REDIRECTION_READY', "$args{ssh_user}:$args{destination_ip}:$args{destination_port}");
     record_info('Redirected', 'Console redirection ready.');
 }
 
@@ -229,7 +213,8 @@ sub connect_target_to_serial {
 
     enter_cmd "ssh $ssh_opt $args{ssh_user}\@$args{destination_ip} 2>&1 | tee -a /dev/$serialdev";
     handle_login_prompt($args{ssh_user});
-    check_serial_redirection();
+    die "Serial console redirection failed to: $args{ssh_user}\@$args{destination_ip}:$args{destination_port}"
+      unless check_serial_redirection();
     record_info('Redirect ON', "Serial redirection established to: $args{destination_ip}");
 }
 
