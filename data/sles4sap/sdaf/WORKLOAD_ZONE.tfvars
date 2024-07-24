@@ -112,7 +112,7 @@ nat_gateway_public_ip_tags = {
 #admin_subnet_name = ""
 
 # admin_subnet_address_prefix is a mandatory parameter if the subnets are not defined in the workload or if existing subnets are not used
-admin_subnet_address_prefix = "10.10.0.0/19"
+admin_subnet_address_prefix = "10.10.0.0/28"
 
 # admin_subnet_arm_id is an optional parameter that if provided specifies Azure resource identifier for the existing subnet to use
 #admin_subnet_arm_id = ""
@@ -134,7 +134,7 @@ admin_subnet_address_prefix = "10.10.0.0/19"
 #db_subnet_name = ""
 
 # db_subnet_address_prefix is a mandatory parameter if the subnets are not defined in the workload or if existing subnets are not used
-db_subnet_address_prefix = "10.10.96.0/19"
+db_subnet_address_prefix = "10.10.0.16/28"
 
 # db_subnet_arm_id is an optional parameter that if provided specifies Azure resource identifier for the existing subnet to use
 #db_subnet_arm_id = ""
@@ -156,7 +156,7 @@ db_subnet_address_prefix = "10.10.96.0/19"
 #app_subnet_name = ""
 
 # app_subnet_address_prefix is a mandatory parameter if the subnets are not defined in the workload or if existing subnets are not used
-app_subnet_address_prefix = "10.10.32.0/19"
+app_subnet_address_prefix = "10.10.0.32/28"
 
 # app_subnet_arm_id is an optional parameter that if provided specifies Azure resource identifier for the existing subnet to use
 #app_subnet_arm_id = ""
@@ -178,7 +178,7 @@ app_subnet_address_prefix = "10.10.32.0/19"
 #web_subnet_name = ""
 
 # web_subnet_address_prefix is a mandatory parameter if the subnets are not defined in the workload or if existing subnets are not used
-web_subnet_address_prefix = "10.10.128.0/19"
+web_subnet_address_prefix = "10.10.0.48/28"
 
 # web_subnet_arm_id is an optional parameter that if provided specifies Azure resource identifier for the existing subnet to use
 #web_subnet_arm_id = ""

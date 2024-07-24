@@ -25,21 +25,23 @@ subtest '[connect_target_to_serial] Test exceptions' => sub {
     $redirect->redefine(check_serial_redirection => sub { return 0; });
 
     set_var('BASE_VM_ID', '7902847fcc554911993686a1d5eca2c8');
+    set_var('QEMUPORT', '1988');
 
     dies_ok { connect_target_to_serial(target_ip => '192.168.1.1') } 'Fail with missing ssh user';
     dies_ok { connect_target_to_serial(ssh_user => 'Totoro') } 'Fail with missing ip address';
+    dies_ok { connect_target_to_serial(ssh_user => 'Totoro', target_ip => 'Satsuki') }
+    'Fail invalid IP';
 
     $redirect->redefine(check_serial_redirection => sub { return 1; });
     dies_ok { connect_target_to_serial(ssh_user => 'Totoro', target_ip => '192.168.1.1') }
     'Fail if function attempts redirect console second time';
+    set_var('BASE_VM_ID', undef);
 
-    unset_vars();
     dies_ok { connect_target_to_serial(ssh_user => 'Totoro', target_ip => '192.168.1.1') }
     'Fail with "BASE_VM_ID" unset';
-    dies_ok { connect_target_to_serial(ssh_user => 'Totoro', target_ip => 'Satsuki') }
-    'Fail invalid IP';
 
     dies_ok { connect_target_to_serial(ssh_user => ' ', target_ip => '192.168.1.1') } 'Fail with user defined as empty space';
+    unset_vars();
 };
 
 subtest '[connect_target_to_serial] Check command composition' => sub {
@@ -53,6 +55,8 @@ subtest '[connect_target_to_serial] Check command composition' => sub {
     $redirect->redefine(check_serial_redirection => sub { return $redirection_status; });
     $redirect->redefine(script_output => sub { return 'castleinthesky'; });
     set_var('BASE_VM_ID', '7902847fcc554911993686a1d5eca2c8');
+    set_var('QEMUPORT', '1988');
+
     connect_target_to_serial(destination_ip => '192.168.1.1', ssh_user => 'Totoro');
     note('CMD:', join(' ', @ssh_cmd));
     ok(grep(/ssh/, @ssh_cmd), 'Execute main command');
@@ -71,6 +75,8 @@ subtest '[connect_target_to_serial] Scenario: console already redirected' => sub
     $redirect->redefine(check_serial_redirection => sub { return 1; });
     $redirect->redefine(script_output => sub { return 'Castle in the sky'; });
     set_var('BASE_VM_ID', '7902847fcc554911993686a1d5eca2c8');
+    set_var('QEMUPORT', '1988');
+
     ok(connect_target_to_serial(destination_ip => '192.168.1.1', ssh_user => 'Totoro'), 'Skip if redirection already active');
     unset_vars();
 };
@@ -88,6 +94,8 @@ subtest '[disconnect_target_from_serial]' => sub {
     ok disconnect_target_from_serial(base_vm_machine_id => '7902847fcc554911993686a1d5eca2c8'), 'Pass with machine ID defined by positional argument';
 
     set_var('BASE_VM_ID', '7902847fcc554911993686a1d5eca2c8');
+    set_var('QEMUPORT', '1988');
+
     ok disconnect_target_from_serial(), 'Pass with machine ID defined by parameter BASE_VM_ID';
     unset_vars();
 
@@ -98,7 +106,7 @@ subtest '[check_serial_redirection]' => sub {
     my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
     $redirect->redefine(script_output => sub { return '7902847fcc554911993686a1d5eca2c8'; });
     $redirect->redefine(record_info => sub { return; });
-
+    set_var('QEMUPORT', '1988');
     set_var('BASE_VM_ID', '7902847fcc554911993686a1d5eca2c8');
     is check_serial_redirection(), '0', 'Return 0 if machine IDs match';
     set_var('BASE_VM_ID', '999999999999999999999999');
@@ -108,69 +116,6 @@ subtest '[check_serial_redirection]' => sub {
 
     is check_serial_redirection(base_vm_machine_id => '123456'), '1', 'Pass with specifying ID via positional argument';
     dies_ok { check_serial_redirection() } 'Fail with BASE_VM_ID being unset';
-};
-
-subtest '[redirection_init]' => sub {
-    my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
-    $redirect->redefine(assert_script_run => sub { return 1; });
-    $redirect->redefine(script_run => sub { return 0; });
-    $redirect->redefine(autoinst_url => sub { return 'https://codegurus.all/spicy_code/global_variables-only'; });
-    $redirect->redefine(save_tmp_file => sub { return 0; });
-    $redirect->redefine(connect_target_to_serial => sub { return 1; });
-    $redirect->redefine(disconnect_target_from_serial => sub { return 1; });
-    $redirect->redefine(remote_port_forward => sub { return 1; });
-    $redirect->redefine(record_info => sub { return 1; });
-    $redirect->redefine(script_output => sub { return '7902847fcc554911993686a1d5eca2c8' });
-    set_var('QEMUPORT', '15685');
-
-    ok(redirection_init(ssh_user => 'Totoro', destination_ip => '192.168.1.1'), 'Pass with correct usage');
-    unset_vars();
-};
-
-subtest '[redirection_init] Test Exceptions' => sub {
-    my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
-    $redirect->redefine(script_run => sub { return 1; });
-    $redirect->redefine(record_info => sub { return 1; });
-    $redirect->redefine(script_output => sub { return '7902847fcc554911993686a1d5eca2c8' });
-
-    dies_ok { redirection_init(ssh_user => 'Totoro') } 'Fail with destination IP undefined';
-    dies_ok { redirection_init(destination_ip => '192.168.1.1') } 'Fail with SSH user undefined';
-    dies_ok { redirection_init(ssh_user => 'Totoro', destination_ip => '192.168.1.1') } 'Fail with autossh package not being installed';
-
-
-};
-
-subtest '[remote_port_forward] Test via redirection_init()' => sub {
-    my $redirect = Test::MockModule->new('sles4sap::console_redirection', no_auto => 1);
-    my @assert_script_run;
-    my $as_root;
-    $redirect->redefine(assert_script_run => sub { @assert_script_run = @_ if grep /autossh/, $_[0]; return '1985'; });
-    $redirect->redefine(script_run => sub { return 0; });
-    $redirect->redefine(autoinst_url => sub { return 'https://codegurus.all/spicy_code/global_variables-only'; });
-    $redirect->redefine(save_tmp_file => sub { return 0; });
-    $redirect->redefine(connect_target_to_serial => sub { return 1; });
-    $redirect->redefine(disconnect_target_from_serial => sub { return 1; });
-    $redirect->redefine(record_info => sub { return 1; });
-    $redirect->redefine(script_output => sub { return 'root' if grep(/whoami/, @_) and $as_root; return 'ghibli'; });
-
-    set_var('REDIRECT_DESTINATION_IP', '192.168.1.5');
-    set_var('REDIRECT_DESTINATION_USER', 'ghibli');
-    set_var('QEMUPORT', '15685');
-
-    redirection_init();
-    note('CMD:', join(' ', @assert_script_run));
-    ok(grep(/sudo/, @assert_script_run), 'Execute main command with sudo');
-    ok(grep(/autossh/, @assert_script_run), 'Execute main command');
-    ok(grep(/-f/, @assert_script_run), 'Run in background');
-    ok(grep(/-N/, @assert_script_run), 'Do not execute any command');
-    ok(grep(/-R 15686:10.0.2.2:15686/, @assert_script_run), 'Remote forwarding');
-    ok(grep(/ghibli\@192.168.1.5/, @assert_script_run), 'Login host');
-
-    $as_root = 1;
-    redirection_init();
-    note('CMD:', join(' ', @assert_script_run));
-    ok(!grep(/sudo/, @assert_script_run), 'Execute command as root without sudo');
-    unset_vars();
 };
 
 done_testing;
