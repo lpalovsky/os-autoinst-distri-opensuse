@@ -439,10 +439,10 @@ sub prepare_tfvars_file {
         library => 'library_parameter_file'
     );
     my %tfvars_template_url = (
-        deployer => data_url('sles4sap/sdaf/DEPLOYER.tfvars'),
-        sap_system => data_url('sles4sap/sdaf/SAP_SYSTEM.tfvars'),
-        workload_zone => data_url('sles4sap/sdaf/WORKLOAD_ZONE.tfvars'),
-        library => data_url('sles4sap/sdaf/LIBRARY.tfvars')
+        deployer => data_url('sles4sap/sap_deployment_automation_framework/CONTROL_PLANE_DEPLOYER.tfvars'),
+        sap_system => data_url('sles4sap/sap_deployment_automation_framework/SAP_SYSTEM.tfvars'),
+        workload_zone => data_url('sles4sap/sap_deployment_automation_framework/WORKLOAD_ZONE.tfvars'),
+        library => data_url('sles4sap/sap_deployment_automation_framework/CONTROL_PLANE_LIBRARY.tfvars')
     );
     croak 'Deployment type not specified' unless $args{deployment_type};
     croak "Unknown deployment type: $args{deployment_type}" unless $tfvars_os_variable{$args{deployment_type}};
@@ -495,12 +495,18 @@ L<https://learn.microsoft.com/en-us/azure/sap/automation/tutorial#deploy-the-sap
 
 sub sdaf_execute_deployment {
     my (%args) = @_;
-    croak 'This function can be used only on sap system and workload zone deployment' unless
-      grep /^$args{deployment_type}$/, ('sap_system', 'workload_zone');
+    my @allowed_args = ('sap_system', 'workload_zone', 'deployer');
+    croak 'This function can be used only with: ' . join(', ', @allowed_args) unless
+      grep /^$args{deployment_type}$/, @allowed_args;
     $args{retries} //= 3;
     $args{timeout} //= 1800;
-    my $parameter_name = $args{deployment_type} eq 'workload_zone' ? 'workload_zone_parameter_file' : 'sap_system_parameter_file';
-    my ($tfvars_filename, $tfvars_path) = fileparse(get_os_variable($parameter_name));
+    my %variable_names = (
+        workload_zone => 'workload_zone_parameter_file',
+        sap_system    => 'sap_system_parameter_file',
+        deployer      => 'deployer_parameter_file'
+    );
+
+    my ($tfvars_filename, $tfvars_path) = fileparse(get_os_variable($variable_names{$args{deployment_type}}));
 
     # Variable is specific to each deployment type and will be changed during the course of whole deployment process.
     # It is used by SDAF internally, so keep it set in OS env
@@ -508,16 +514,18 @@ sub sdaf_execute_deployment {
 
     # SDAF has to be executed from the profile directory
     assert_script_run("cd $tfvars_path");
-    my $deploy_command = get_sdaf_deployment_command(
-        deployment_type => $args{deployment_type}, tfvars_filename => $tfvars_filename);
-
-    record_info('SDAF exe', "Executing '$args{deployment_type}' deployment: $deploy_command");
-    my $rc;
     my $output_log_file = log_dir() . "/deploy_$args{deployment_type}_attempt.txt";
+    my $deploy_command_plain = get_sdaf_deployment_command(
+        deployment_type => $args{deployment_type}, tfvars_filename => $tfvars_filename);
+    my $deploy_command = log_command_output(command => $deploy_command_plain, log_file => $output_log_file);
+    script_run('sleep 60', timeout=>200);
+    record_info('SDAF exe', "Executing '$args{deployment_type}' deployment: $deploy_command_plain");
+    my $rc;
     my $attempt_no = 1;
     while ($attempt_no <= $args{retries}) {
-        $output_log_file =~ s/attempt/attempt-$attempt_no/;
-        $deploy_command = log_command_output(command => $deploy_command, log_file => $output_log_file);
+        # Adjust attempt number in variables
+        $output_log_file =~ s/attempt(?:-\d)?/attempt-$attempt_no/;
+        $deploy_command =~ s/attempt(?:-\d)?/attempt-$attempt_no/;
         $rc = script_run($deploy_command, timeout => $args{timeout});
         upload_logs($output_log_file, log_name => $output_log_file);    # upload logs before failing
         last unless $rc;
@@ -528,7 +536,6 @@ sub sdaf_execute_deployment {
     die "SDAF deployment execution failed with RC: $rc" if $rc;
     record_info('Deploy done');
 }
-
 
 =head2 get_sdaf_deployment_command
 
@@ -568,8 +575,18 @@ sub get_sdaf_deployment_command {
             '--state_subscription', get_os_variable('ARM_SUBSCRIPTION_ID'),
             '--auto-approve');
     }
+    elsif ($args{deployment_type} eq 'deployer') {
+        $cmd = join(' ', sdaf_scripts_dir() . '/deploy_controlplane.sh',
+            '--deployer_parameter_file', get_os_variable('deployer_parameter_file'),
+            '--library_parameter_file', get_os_variable('library_parameter_file'),
+            '--subscription', get_os_variable('ARM_SUBSCRIPTION_ID'),
+            '--tenant_id', get_os_variable('ARM_TENANT_ID'),
+            '--spn_id', '${ARM_CLIENT_ID}',    # Keep secrets hidden in serial output
+            '--spn_secret', '${ARM_CLIENT_SECRET}',    #keep secrets hidden in serial output
+            '--auto-approve');
+    }
     else {
-        croak("Incorrect deployment type: '$args{deployment_type}'\nOnly 'workload_zone' and 'sap_system' is supported.");
+        croak("Incorrect deployment type: '$args{deployment_type}'\nOnly 'workload_zone', 'deployer' and 'sap_system' is supported.");
     }
     return $cmd;
 }

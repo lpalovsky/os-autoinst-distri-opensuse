@@ -135,7 +135,7 @@ sub homedir {
 
 B<create>: Create directory if it does not exist.
 
-Returns deployment directory path with job ID appended as unique identifier.
+Returns deployment directory path.
 Optionally it can create directory if it does not exists.
 
 =cut
@@ -143,7 +143,7 @@ Optionally it can create directory if it does not exists.
 sub deployment_dir {
     my (%args) = @_;
     my $deployment_dir =
-      get_var('DEPLOYMENT_ROOT_DIR', '/tmp') . '/Azure_SAP_Automated_Deployment_' . find_deployment_id();
+      get_var('DEPLOYMENT_ROOT_DIR', '/tmp') . '/Azure_SAP_Automated_Deployment';
     assert_script_run("mkdir -p $deployment_dir") if $args{create};
     return $deployment_dir;
 }
@@ -271,7 +271,8 @@ sub get_tfvars_path {
     # Argument (%args) validation is done by 'get_sdaf_config_path()'
     my $config_root_path = get_sdaf_config_path(%args);
 
-    my $job_id = find_deployment_id();
+    # skip running find_deployer_id() with 'deployer' and 'library' to avoid executing unnecessary functions.
+    my $job_id = grep(/$args{deployment_type}/, ('deployer', 'library')) ? get_current_job_id : find_deployment_id();
 
     my %file_names = (
         workload_zone => "$args{env_code}-$args{sdaf_region_code}-$args{vnet_code}-INFRASTRUCTURE-$job_id.tfvars",
@@ -297,12 +298,15 @@ Resource group pattern: I<SDAF-OpenQA-[deployment type]-[deployment id]-[OpenQA 
 
 sub generate_resource_group_name {
     my (%args) = @_;
+    my $env_code = get_required_var('SDAF_ENV_CODE');
+    my $region = get_required_var('PUBLIC_CLOUD_REGION');
     my @supported_types = ('workload_zone', 'sap_system', 'library', 'deployer');
     croak "Unsupported deployment type: $args{deployment_type}\nCurrently supported ones are: @supported_types" unless
       grep(/^$args{deployment_type}$/, @supported_types);
-    my $job_id = find_deployment_id();
 
-    return join('-', 'SDAF', 'OpenQA', $args{deployment_type}, $job_id);
+    return(join('-', 'SDAF', 'OpenQA', $env_code, 'DEPLOYER', $region)) if $args{deployment_type} eq 'deployer';
+    return(join('-', 'SDAF', 'OpenQA', $env_code, 'LIBRARY', $region)) if $args{deployment_type} eq 'library';
+    return(join('-', 'SDAF', 'OpenQA', $args{deployment_type}, find_deployment_id()));
 }
 
 =head2 generate_deployer_name

@@ -1,0 +1,6 @@
+---
+name: sap_deployment_automation_framework
+description: |
+  Deploy SAP Hana SR scenario using 'SAP deployment automation framework'
+schedule:
+  - sles4sap/sap_deployment_automation_framework/deploy_controlplane
