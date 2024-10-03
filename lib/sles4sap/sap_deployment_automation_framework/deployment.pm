@@ -565,10 +565,31 @@ sub prepare_sdaf_project {
 
     # Workaround for SDAF bug https://github.com/Azure/sap-automation/issues/617
     record_soft_failure 'gh#Azure/sap-automation#617';
-    file_content_replace(
-        "$deployment_dir/sap-automation/deploy/terraform/terraform-units/modules/sap_landscape/providers.tf",
-        '>= 3.23' => '3.116.0'
-    );
+    # Workaround for SDAF bug https://github.com/Azure/sap-automation/issues/641
+    record_soft_failure 'gh#Azure/sap-automation#641';
+#     assert_script_run("rm $deployment_dir/sap-automation/deploy/terraform/terraform-units/modules/sap_landscape/providers.tf");
+#     write_sut_file("$deployment_dir/sap-automation/deploy/terraform/terraform-units/modules/sap_landscape/providers.tf",
+#         '
+# terraform {
+#   required_providers {
+#     azurerm = {
+#       source                = "hashicorp/azurerm"
+#       configuration_aliases = [azurerm.main, azurerm.deployer, azurerm.dnsmanagement, azurerm.peering]
+#       version               = "3.116.0"
+#     }
+#     azuread = {
+#       source                = "hashicorp/azuread"
+#       version               = "2.53.1"
+#     }
+#     azapi = {
+#       source                = "azure/azapi"
+#       configuration_aliases = [azapi.api]
+#     }
+#   }
+# }
+#
+# '
+#     );
 
     assert_script_run("cp -Rp sap-automation-samples/Terraform/WORKSPACES $deployment_dir/WORKSPACES");
     # Ensure correct directories are in place
