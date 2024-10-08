@@ -55,6 +55,7 @@ our @EXPORT = qw(
   az_network_peering_delete
   az_disk_create
   az_resource_delete
+  az_resource_list
   az_validate_uuid_pattern
 );
 
@@ -1392,6 +1393,39 @@ sub az_resource_delete {
     push @az_command, "--ids $args{ids}" if $args{ids};
 
     assert_script_run(join(' ', @az_command), timeout => $args{timeout});
+}
+
+=head2 az_resource_list
+
+    az_resource_list([resource_group=>$resource_group, query=>$query], output=>$output);
+
+Lists existing az resources based on arguments provided. Calling function without any argument returns full information
+from all existing resource groups.
+Returns decoded json structure if json format is requested, otherwise whole output is a string.
+
+=over 3
+
+=item B<resource_group> Existing resource group name.
+
+=item B<query> Jmespath query
+
+=item B<output> Output format. Default: 'json'
+
+=back
+=cut
+
+sub az_resource_list {
+    my (%args) = @_;
+    $args{output} //= 'json';
+    my @az_command = ('az resource list');
+    push(@az_command, "--resource-group $args{resource_group}") if $args{resource_group};
+    push(@az_command, "--query $args{query}") if $args{query};
+    push(@az_command, "--output $args{output}");
+
+    my $result = script_output(join(' ', @az_command));
+
+    return($result) unless $args{output} eq 'json';
+    return(decode_json($result));
 }
 
 =head2 az_validate_uuid_pattern

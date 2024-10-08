@@ -28,8 +28,9 @@ use Exporter qw(import);
 use Mojo::JSON qw(decode_json);
 use Scalar::Util qw(looks_like_number);
 use Carp qw(croak);
+use Time::Piece;
 use mmapi qw(get_parents get_job_autoinst_vars get_children get_job_info get_current_job_id);
-use sles4sap::azure_cli qw(az_resource_delete);
+use sles4sap::azure_cli qw(az_resource_delete az_resource_list);
 use Data::Dumper;
 
 our @EXPORT = qw(
@@ -39,6 +40,7 @@ our @EXPORT = qw(
   find_deployment_id
   find_deployer_resources
   destroy_deployer_vm
+  destroy_orphaned_deployers
 );
 
 =head2 check_ssh_availability
@@ -277,4 +279,66 @@ sub destroy_deployer_vm {
         die "Failed to clean up resources:\n" . join("\n", @resource_cleanup_list) if ($attempt == $retries);
     }
     record_info('Deployer cleanup', 'All resources destroyed');
+}
+
+=head2 find_orphaned_deployers
+
+    find_orphaned_deployers();
+
+=cut
+
+sub find_orphaned_deployers {
+    my (%args) = @_;
+    $args{retry} //= 3;
+    $args{timeout} //= 1200;
+    $args{orphan_after_sec} //= 25200; # Consider resource as orphaned after 7 hours
+    $args{deployer_resource_group} //= get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP');
+    my $all_resources = az_resource_list(
+        resource_group=>$args{deployer_resource_group},
+        query=>'[?tags.deployment_id].{resource_name:name, creation_time:createdTime}',
+        output=>'json'
+    );
+    my @orphaned_resources;
+
+    foreach (@$all_resources) {
+        # for format explanation check 'man strftime' - az cli returns date in ISO 8601 format
+        # Time::Piece does not recognize az cli timezone format `+02:00`, only `+0200`
+        # therefore we have to do some colonoscopy and remove `:` from az cli output
+        $_->{creation_time} =~ s/(?<=\+\d\d):(?=\d\d$)//;
+        # Avoid using `%F` instead of `%F` as it is not supported in older perl versions
+        my $time = Time::Piece->strptime($_->{creation_time}, '%Y-%m-%dT%H:%M:%S%z')->epoch();
+
+        # naming convention check. Resources coming from OpenQA have name like: <test_id>-OpenQA_Deployer_VM*
+        next if $_->{resource_name} =~ /\d+-OpenQA_Deployer_VM.*/;
+        # Mark for deletion resources older than $args{orphan_after_sec}
+        push(@orphaned_resources, $_->{resource_name}) if $time < time() - $args{orphan_after_sec};
+    }
+    # Do nothing in case there is nothing to delete
+    return unless @orphaned_resources;
+
+
+
+=head2 destroy_orphaned_deployers
+
+    destroy_orphaned_deployers();
+
+Collects resource id of all resources belonging to the deployer VM and deletes them.
+Cleanup deployer VM resources only, B<deployer resource group itself will stay intact>.
+
+B<timeout>: Timeout for destroy command. Default: 800
+
+=cut
+
+sub destroy_orphaned_deployers {
+    for my $attempt (1 .. $args{retries}){
+        record_info("Del orphans#$attempt");
+        az_resource_delete(ids => join(' ', @orphaned_resources),
+            resource_group => $args{deployer_resource_group}, verbose => 'yes', timeout => $args{timeout});
+        sleep 5;    # Just give things few secs to avoid command spamming.
+
+        # Check if all resources were cleaned up
+        @orphaned_resources = @{find_deployer_resources()};
+        last unless @orphaned_resources;
+        die "Failed to clean up resources:\n" . join("\n", @orphaned_resources) if ($attempt == $args{retries});
+    }
 }
