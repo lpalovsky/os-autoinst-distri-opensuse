@@ -336,6 +336,13 @@ resourcegroup_name = "%SDAF_RESOURCE_GROUP%"
 # If defined provides the DNS label for the Virtual Network
 dns_label="openqa.net"
 
+dns_zone_names = {
+        file_dns_zone_name = "openqa.net",
+        blob_dns_zone_name = "openqa.net",
+        table_dns_zone_name = "openqa.net",
+        vault_dns_zone_name = "openqa.net"
+}
+
 #If defined provides the lsit of DNS servers to attach to the Virtual NEtwork
 #dns_server_list = []
 
