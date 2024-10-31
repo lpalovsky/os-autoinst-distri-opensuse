@@ -203,6 +203,7 @@ Deployment ID returned from both jobs: 123456 - because it matches with existing
 
 sub find_deployment_id {
     my (%args) = @_;
+    return get_var('SDAF_DEPLOYMENT_ID') if get_var('SDAF_DEPLOYMENT_ID');
     $args{deployer_resource_group} //= get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP');
     my @check_list = (get_current_job_id(), @{get_parent_ids()});
 
