@@ -43,6 +43,8 @@ our @EXPORT = qw(
   generate_deployer_name
   get_workload_vnet_code
   get_sdaf_inventory_path
+  deployer_private_key_path
+  sut_private_key_path
 );
 
 =head2 %sdaf_region_matrix
