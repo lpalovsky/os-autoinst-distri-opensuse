@@ -23,9 +23,6 @@ use sles4sap::sap_deployment_automation_framework::naming_conventions
   $sut_private_key_path
   generate_resource_group_name);
 
-sub test_flags {
-    return {fatal => 1, publiccloud_multi_module => 1};
-}
 
 sub run {
     my ($self, $run_args) = @_;

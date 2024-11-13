@@ -9,6 +9,38 @@ use testapi;
 use sles4sap::sap_deployment_automation_framework::inventory_tools;
 use Data::Dumper;
 
+my $mock_inventory_data = {
+    'QES_PAS' => {
+        'hosts' => {
+            'Freddie' => {
+                'ansible_connection' => 'ssh',
+                'connection_type' => 'key',
+                'virtual_host' => 'Mercury',
+                'ansible_user' => 'freddie',
+                'vm_name' => 'FreddieMercury',
+                'become_user' => 'root',
+                'ansible_host' => '10.10.10.2',
+                'os_type' => 'linux'
+            }
+        },
+        'vars' => undef
+    },
+    'QES_DB' => {
+        'vars' => undef,
+        'hosts' => {
+            'John' => {
+                'ansible_connection' => 'ssh',
+                'connection_type' => 'key',
+                'virtual_host' => 'Deacon',
+                'ansible_user' => 'john',
+                'vm_name' => 'JohnDeacon',
+                'become_user' => 'john',
+                'ansible_host' => '10.10.10.3',
+                'os_type' => 'linux'
+            }
+        }
+    }
+};
 
 subtest '[prepare_ssh_config] ' => sub {
     my $mock = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::inventory_tools', no_auto => 1);
@@ -43,39 +75,6 @@ subtest '[prepare_ssh_config] ' => sub {
             $db_host_B_content = join(' ', @_) if join(' ', @_) =~ /entry_name Freddie/;
             return; });
 
-    my $mock_inventory_data = {
-        'QES_PAS' => {
-            'hosts' => {
-                'Freddie' => {
-                    'ansible_connection' => 'ssh',
-                    'connection_type' => 'key',
-                    'virtual_host' => 'Mercury',
-                    'ansible_user' => 'freddie',
-                    'vm_name' => 'FreddieMercury',
-                    'become_user' => 'root',
-                    'ansible_host' => '10.10.10.2',
-                    'os_type' => 'linux'
-                }
-            },
-            'vars' => undef
-        },
-        'QES_DB' => {
-            'vars' => undef,
-            'hosts' => {
-                'John' => {
-                    'ansible_connection' => 'ssh',
-                    'connection_type' => 'key',
-                    'virtual_host' => 'Deacon',
-                    'ansible_user' => 'john',
-                    'vm_name' => 'JohnDeacon',
-                    'become_user' => 'john',
-                    'ansible_host' => '10.10.10.3',
-                    'os_type' => 'linux'
-                }
-            }
-        }
-    };
-
     prepare_ssh_config(inventory_data => $mock_inventory_data, jump_host_ip => '127.0.0.1', jump_host_user => 'Freddie');
     note("\n --> $jump_config_content");
     ok($jump_config_content =~ /entry_name deployer_jump/, 'Jump host: entry_name');
@@ -101,9 +100,14 @@ subtest '[prepare_ssh_config] ' => sub {
     ok($db_host_B_content =~ /identity_file/, 'DB host A: identity_file');
     ok($db_host_B_content =~ /proxy_jump deployer_jump/, 'DB host A: proxy_jump');
     ok($db_host_B_content =~ /strict_host_key_checking no/, 'DB host A: strict_host_key_checking');
-
-
 };
 
+subtest '[sdaf_create_instances] ' => sub {
+    my $mock = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::inventory_tools', no_auto => 1);
+    $mock->redefine(record_info => sub { note("\n --> " . join("\n --> ", @_)); return; });
+    set_var('PUBLIC_CLOUD_REGION', 'swedencentral');
+    my $instances = sdaf_create_instances(inventory_content=>$mock_inventory_data);
+
+};
 
 done_testing;

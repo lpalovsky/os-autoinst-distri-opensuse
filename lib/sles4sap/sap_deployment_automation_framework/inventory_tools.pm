@@ -14,6 +14,7 @@ use Exporter qw(import);
 use Carp qw(croak);
 use sles4sap::sap_deployment_automation_framework::naming_conventions
   qw($deployer_private_key_path $sut_private_key_path);
+use publiccloud::azure;
 use sles4sap::console_redirection;
 
 =head1 SYNOPSIS
@@ -61,6 +62,7 @@ our @EXPORT = qw(
   read_inventory_file
   prepare_ssh_config
   verify_ssh_proxy_connection
+  sdaf_create_instances
 );
 
 =head2 read_inventory_file
@@ -230,4 +232,45 @@ sub verify_ssh_proxy_connection {
             record_info('SSH check', "SSH proxy connection to $hostname: OK");
         }
     }
+}
+
+=head2 sdaf_create_instances
+
+    sdaf_create_instances( inventory_content=>HASHREF);
+
+Creates and returns  B<$instances> class which is a main component of F<lib/sles4sap_publiccloud.pm> and
+general public cloud libraries F</lib/publiccloud/*>.
+
+=over
+
+=item * B<inventory_content> Referenced content of the inventory yaml file
+
+=item * B<sut_ssh_key_path> PAth to SU
+
+=back
+=cut
+
+sub sdaf_create_instances {
+    my (%args) = @_;
+    my $provider = publiccloud::azure->new();
+    my @instances = ();
+
+    for my $instance_type (keys(%{$args{inventory_content}})) {
+        my $hosts = $args{inventory_content}->{$instance_type}{hosts};
+        for my $physical_host (keys %$hosts) {
+            my $instance = publiccloud::instance->new(
+                public_ip => $hosts->{$physical_host}->{ansible_host},
+                instance_id => $physical_host,
+                username => $hosts->{$physical_host}->{ansible_user},
+                ssh_key => $args{sut_ssh_key_path},
+                provider => $provider,
+                region => get_required_var('PUBLIC_CLOUD_REGION')
+            );
+            push(@instances, $instance);
+        }
+    }
+    use Data::Dumper;
+    record_info('Instance', Dumper(\@instances));
+    publiccloud::instances::set_instances(@instances);
+    return \@instances;
 }
