@@ -57,7 +57,9 @@ sub prepare_tfvars_file {
         library => data_url('sles4sap/sap_deployment_automation_framework/LIBRARY.tfvars')
     );
     # Parameters required for defining DB VM image for SAP systems deployment
-    set_db_image_parameters() if $args{deployment_type} eq 'sap_system';
+    set_image_parameters() if $args{deployment_type} eq 'sap_system';
+    # Parameters required for Hana DB HA scenario
+    set_hana_db_parameters();
     # replace default vnet name with shorter one to avoid naming restrictions
     set_workload_vnet_name();
 
@@ -116,21 +118,15 @@ sub set_workload_vnet_name {
     set_var('SDAF_SUT_VNET_NAME', 'OpenQA-' . $args{job_id});
 }
 
-=head2 set_vm_image_parameters
+=head2 set_image_parameters
 
-    set_vm_db_image_parameters([job_id=>'123456']);
-
-=over
-
-=item * B<$job_id>: Specify job id to be used. Default: current deployment job ID
-
-=back
+    set_image_parameters();
 
 Sets OpenQA parameters required for replacing tfvars template variables for database VM image.
 
 =cut
 
-sub set_db_image_parameters {
+sub set_image_parameters {
     my %params;
     # Parse image ID supplied by OpenQA parameter 'PUBLIC_CLOUD_IMAGE_ID'
     my @variable_names = qw(SDAF_DB_IMAGE_PUBLISHER SDAF_DB_IMAGE_OFFER SDAF_DB_IMAGE_SKU SDAF_DB_IMAGE_VERSION);
@@ -145,5 +141,39 @@ sub set_db_image_parameters {
 
     foreach (keys(%params)) {
         set_var($_, $params{$_});
+    }
+}
+
+=head2 set_hana_db_parameters
+
+    set_hana_db_parameters();
+
+Sets tfvars Database HA parameters according to scenarios defined in OpenQA parameter 'SDAF_DEPLOYMENT_SCENARIO'.
+
+=cut
+
+sub set_hana_db_parameters {
+    if (grep /db_ha/, split(',', get_var('SDAF_DEPLOYMENT_SCENARIO'))) {
+        set_var('SDAF_HANA_HA_SETUP', 'true');
+    }
+    else {
+        set_var('SDAF_HANA_HA_SETUP', 'false');
+    }
+}
+
+=head2 set_netweaver_parameters
+
+    set_netweaver_parameters();
+
+Sets tfvars Database HA parameters according to scenarios defined in OpenQA parameter 'SDAF_DEPLOYMENT_SCENARIO'.
+
+=cut
+
+sub set_netweaver_parameters {
+    if (grep /db_ha/, split(',', get_var('SDAF_DEPLOYMENT_SCENARIO'))) {
+        set_var('SDAF_HANA_HA_SETUP', 'true');
+    }
+    else {
+        set_var('SDAF_HANA_HA_SETUP', 'false');
     }
 }

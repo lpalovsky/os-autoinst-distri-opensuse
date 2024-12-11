@@ -34,7 +34,7 @@ subtest '[prepare_tfvars_file] Test curl commands' => sub {
     $ms_sdaf->redefine(upload_logs => sub { return 1; });
     $ms_sdaf->redefine(replace_tfvars_variables => sub { return 1; });
     $ms_sdaf->redefine(get_os_variable => sub { return $_[0]; });
-    $ms_sdaf->redefine(set_db_image_parameters => sub { return; });
+    $ms_sdaf->redefine(set_image_parameters => sub { return; });
     $ms_sdaf->redefine(set_workload_vnet_name => sub { return 'vnet'; });
 
     $ms_sdaf->redefine(data_url => sub { return 'http://openqa.suse.de/data/' . join('', @_); });
@@ -53,7 +53,7 @@ subtest '[prepare_tfvars_file] Test curl commands' => sub {
     }
 };
 
-subtest '[set_vm_image_parameters]' => sub {
+subtest '[set_image_parameters]' => sub {
     my $ms_sdaf = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::configure_tfvars', no_auto => 1);
     $ms_sdaf->redefine(assert_script_run => sub { return 1; });
     $ms_sdaf->redefine(upload_logs => sub { return 1; });
