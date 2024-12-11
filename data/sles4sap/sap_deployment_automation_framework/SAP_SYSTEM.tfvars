@@ -284,7 +284,7 @@ sid = "%SAP_SID%"
 #########################################################################################
 
 # scs_server_count defines how many SCS servers to deploy
-scs_server_count = "0"
+scs_server_count = "1"
 
 # scs_high_availability is a boolean flag controlling if SCS should be highly available
 scs_high_availability = false
@@ -300,7 +300,7 @@ pas_instance_number = "03"
 
 
 # scs_server_zones is an optional list defining the availability zones to which deploy the SCS servers
-scs_server_zones = ["0"]
+scs_server_zones = ["1"]
 
 # scs_server_sku, if defined provides the SKU to use for the SCS servers
 #scs_server_sku = ""
@@ -350,10 +350,10 @@ scs_server_use_avset = false
 #########################################################################################
 
 # application_server_count defines how many application servers to deploy
-application_server_count = 0
+application_server_count = 1
 
 # application_server_zones is an optional list defining the availability zones to which deploy the application servers
-application_server_zones = ["0"]
+application_server_zones = ["1"]
 
 # application_server_sku, if defined provides the SKU to use for the application servers
 #application_server_sku = ""
@@ -448,7 +448,7 @@ webdispatcher_server_use_avset = false
 #webdispatcher_server_tags = {}
 
 # webdispatcher_server_zones is an optional list defining the availability zones to which deploy the web dispatchers
-#webdispatcher_server_zones = ["0"]
+#webdispatcher_server_zones = ["1"]
 
 # The vm_image defines the Virtual machine image to use for the web dispatchers,
 # if source_image_id is specified the deployment will use the custom image provided,
@@ -853,7 +853,7 @@ use_spn = true
 
 # bom_name is the name of the SAP Application Bill of Materials file
 
-bom_name = "HANA_2_00_075_v0001ms"
+bom_name = "%SDAF_BOM_NAME%"
 
 # configuration_settings is a dictionary containing values that will be persisted in sap-parameters.yaml
 #configuration_settings = {}
