@@ -61,11 +61,21 @@ sub run {
         # SAP-specific operating system configuration
         {playbook_filename => 'playbook_02_os_sap_specific_config.yaml'},
         # SAP Bill of Materials processing - this also mounts install media storage
-        {playbook_filename => 'playbook_03_bom_processing.yaml'},
+        {playbook_filename => 'playbook_03_bom_processing.yaml', timeout => 7200},
         # SAP HANA database installation
         {playbook_filename => 'playbook_04_00_00_db_install.yaml', timeout => 1800},
         # SAP HANA high-availability configuration
         {playbook_filename => 'playbook_04_00_01_db_ha.yaml', timeout => 1800},
+        # SAP HANA high-availability configuration
+        {playbook_filename => 'playbook_05_00_00_sap_scs_install.yaml', timeout => 1800},
+        # SAP HANA high-availability configuration
+        {playbook_filename => 'playbook_05_01_sap_dbload.yaml', timeout => 7200},
+        # SAP HANA high-availability configuration
+        {playbook_filename => 'playbook_05_02_sap_pas_install.yaml', timeout => 7200},
+        # SAP HANA high-availability configuration
+        {playbook_filename => 'playbook_05_03_sap_app_install.yaml', timeout => 3600},
+        # SAP HANA high-availability configuration
+        {playbook_filename => 'playbook_06_00_acss_registration.yaml', timeout => 1800},
     );
 
     connect_target_to_serial();
