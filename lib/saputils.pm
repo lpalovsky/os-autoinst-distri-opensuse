@@ -20,6 +20,8 @@ our @EXPORT = qw(
   calculate_hana_topology
   check_hana_topology
   check_crm_output
+  get_primary_node
+  get_failover_node
 );
 
 =head1 SYNOPSIS
@@ -174,6 +176,49 @@ sub check_crm_output {
 
     record_info('check_crm_output', "resource_starting:$resource_starting failed_actions:$failed_actions");
     return (($resource_starting != 1) && ($failed_actions != 1) ? 1 : 0);
+}
+
+=head2 get_primary_node
+    get_primary_node();
+
+    Returns hostname of current primary node obtained from C<SAPHanaSR-showAttr --format=script> command output
+
+=over
+
+=item B<input> - return value of calculate_hana_topology
+
+=back
+=cut
+
+sub get_primary_node {
+    my (%args) = @_;
+    croak("Argument <input> missing") unless $args{input};
+    my $topology = $args{input};
+    for my $db (keys %$topology) {
+        return $db if $topology->{$db}{sync_state} eq 'PRIM';
+    }
+}
+
+=head2 get_failover_node
+    get_failover_node();
+
+    Returns hostname of current failover (replica) node obtained from C<SAPHanaSR-showAttr --format=script> command output.
+    Returns node hostname even if it's in 'SFAIL' state.
+
+=over
+
+=item B<input> - return value of calculate_hana_topology
+
+=back
+=cut
+
+sub get_failover_node {
+    my (%args) = @_;
+    croak("Argument <input> missing") unless $args{input};
+    my $topology = $args{input};
+    for my $db (keys %$topology) {
+        return $db if grep /$topology->{$db}{sync_state}/, ('SOK', 'SFAIL');
+    }
 }
 
 1;

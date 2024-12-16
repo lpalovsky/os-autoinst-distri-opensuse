@@ -71,6 +71,7 @@ our @EXPORT = qw(
   get_instance_profile_path
   load_ase_env
   upload_ase_logs
+  saphostctrl_list_databases
 );
 
 =head1 SYNOPSIS
