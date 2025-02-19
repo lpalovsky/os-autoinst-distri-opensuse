@@ -176,6 +176,26 @@ sub set_hana_db_parameters {
     set_var('SDAF_HANA_HA_SETUP', grep(/ha/, @{$args{components}}) ? 'true' : 'false');
 }
 
+=head2 set_fencing_parameters
+
+    set_fencing_parameters(components=>['db_install', 'db_ha']);
+
+Sets tfvars Database HA parameters according to scenario defined by B<$args{components}>.
+
+=over
+
+=item * B<components>: B<ARRAYREF> of components that should be installed. Check function B<validate_components> for available options.
+
+=back
+
+=cut
+
+sub set_fencing_parameters {
+    my (%args) = @_;
+    # Enable HA cluster
+    set_var('SDAF_HANA_HA_SETUP', grep(/ha/, @{$args{components}}) ? 'true' : 'false');
+}
+
 =head2 set_netweaver_parameters
 
     set_netweaver_parameters(components=>['db_install', 'db_ha']);
