@@ -176,6 +176,42 @@ sub set_hana_db_parameters {
     set_var('SDAF_HANA_HA_SETUP', grep(/ha/, @{$args{components}}) ? 'true' : 'false');
 }
 
+=head2 set_fencing_parameters
+
+    set_fencing_parameters(components=>['db_install', 'db_ha']);
+
+Sets tfvars Database HA parameters according to scenario defined by B<$args{components}>.
+
+=over
+
+=item * B<components>: B<ARRAYREF> of components that should be installed. Check function B<validate_components> for available options.
+
+=back
+
+=cut
+
+sub set_fencing_parameters {
+    my (%args) = @_;
+    # Enable HA cluster
+    set_var('SDAF_HANA_HA_SETUP', grep(/ha/, @{$args{components}}) ? 'true' : 'false');
+
+    # Fencing mechanism AFA (Azure fencing agent - MSI), ASD (Azure shared disk - SBD), ISCSI (iSCSI based SBD fencing)
+    # Set default value to AFA - Azure fencing agent (MSI)
+    set_var('SDAF_SCS_FENCING_TYPE', get_var('SDAF_FENCING_TYPE', 'AFA')) unless get_var('SDAF_SCS_FENCING_TYPE');
+    set_var('SDAF_DB_FENCING_TYPE', get_var('SDAF_FENCING_TYPE', 'AFA')) unless get_var('SDAF_DB_FENCING_TYPE');
+
+    # Setup ISCSI deployment
+    if (grep(/ISCSI/,
+        (get_var('SDAF_SCS_FENCING_TYPE'), get_var('SDAF_DB_FENCING_TYPE'), get_var('SDAF_FENCING_TYPE')))) {
+        # Set default value for iSCSI device count
+        set_var('SDAF_SCSI_DEVICE_COUNT', get_var('SDAF_SCSI_DEVICE_COUNT', '1'));
+    }
+    else {
+        # Disable iSCSI deployment if not needed
+        set_var('SDAF_SCSI_DEVICE_COUNT', '0')
+    }
+}
+
 =head2 set_netweaver_parameters
 
     set_netweaver_parameters(components=>['db_install', 'db_ha']);
