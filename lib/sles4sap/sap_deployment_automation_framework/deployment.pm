@@ -465,6 +465,7 @@ sub sdaf_execute_deployment {
         deployment_type => $args{deployment_type}, tfvars_filename => $tfvars_filename);
 
     record_info('SDAF exe', "Executing '$args{deployment_type}' deployment: $deploy_command");
+    die('Avadakadavra');
     my $rc;
     $output_log_file = log_dir() . "/deploy_$args{deployment_type}_attempt.txt";
     my $attempt_no = 1;
