@@ -13,7 +13,7 @@ use warnings;
 use sles4sap::sap_deployment_automation_framework::deployment;
 use sles4sap::sap_deployment_automation_framework::naming_conventions;
 use sles4sap::console_redirection qw(connect_target_to_serial disconnect_target_from_serial);
-use sles4sap::sap_deployment_automation_framework::configure_tfvars qw(validate_components);
+use sles4sap::sap_deployment_automation_framework::configure_workload_tfvars qw(validate_components);
 use serial_terminal qw(select_serial_terminal);
 use testapi;
 use publiccloud::utils 'is_byos';
