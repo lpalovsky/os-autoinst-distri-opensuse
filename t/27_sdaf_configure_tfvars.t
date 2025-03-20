@@ -235,5 +235,50 @@ subtest '[set_fencing_parameters] Check value translation' => sub {
     undef_variables;
 };
 
+subtest '[create_workload_tfvars] Test exceptions' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::configure_tfvars', no_auto => 1);
+    $ms_sdaf->redefine(get_os_variable => sub { return 'espresso'; });
+    $ms_sdaf->redefine(find_deployment_id => sub { return 'lungo'; });
+    my %arguments = (environment => 'LAB',
+        location => 'swedencentral',
+        job_id => '42',
+        network_data => 'americano',
+        workload_vnet_code => 'jelly_bean'
+    );
+
+    for my $arg (keys(%arguments)) {
+        my $original = $arguments{$arg};
+        $arguments{$arg} = undef;
+        $ms_sdaf->redefine(find_deployment_id => sub { return undef; }) if $arg eq 'job_id';
+        dies_ok { create_workload_tfvars(%arguments); } "Croak with missing mandatory argument '$arg'";
+        $ms_sdaf->redefine(find_deployment_id => sub { return 'lungo'; });
+        $arguments{$arg} = $original;
+    }
+};
+
+subtest '[env_definitions]' => sub {
+    my $ms_sdaf = Test::MockModule->new('sles4sap::sap_deployment_automation_framework::configure_tfvars', no_auto => 1);
+    my $tfvars_file;
+    $ms_sdaf->redefine(get_os_variable => sub { return 'espresso'; });
+    $ms_sdaf->redefine(find_deployment_id => sub { return 'lungo'; });
+    $ms_sdaf->redefine(write_sut_file => sub { $tfvars_file = $_[1]; return; });
+    my %network_data = (
+        network_address_space => '192.168.1.0/26',
+        db_subnet_address_prefix => '192.168.1.0/28',
+        web_subnet_address_prefix => '192.168.1.56/29',
+        admin_subnet_address_prefix => '192.168.1.48/29',
+        iscsi_subnet_address_prefix => '192.168.1.32/28',
+        app_subnet_address_prefix => '192.168.1.16/28'
+    );
+    my %arguments = (environment => 'LAB',
+        location => 'swedencentral',
+        job_id => '42',
+        workload_vnet_code => 'jelly_bean',
+        network_data => \%network_data);
+
+    create_workload_tfvars(%arguments);
+    note("\nTfvars file:\n$tfvars_file");
+};
+
 done_testing;
 

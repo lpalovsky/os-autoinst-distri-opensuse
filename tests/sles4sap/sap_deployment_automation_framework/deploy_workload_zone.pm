@@ -11,7 +11,7 @@ use strict;
 use warnings;
 use sles4sap::sap_deployment_automation_framework::deployment;
 use sles4sap::sap_deployment_automation_framework::naming_conventions;
-use sles4sap::sap_deployment_automation_framework::configure_tfvars qw(prepare_tfvars_file);
+use sles4sap::sap_deployment_automation_framework::configure_tfvars qw(create_workload_tfvars);
 use sles4sap::sap_deployment_automation_framework::networking
   qw(assign_address_space calculate_subnets);
 use sles4sap::console_redirection;
@@ -61,13 +61,14 @@ sub run {
         set_var(uc($variable_name), $network_data{$variable_name});
     }
 
-    prepare_tfvars_file(deployment_type => 'workload_zone');
+    create_workload_tfvars(network_data=>\%network_data, workload_vnet_code=>$workload_vnet_code);
     az_login();
     sdaf_execute_deployment(
         deployment_type => 'workload_zone',
         retries => $terraform_retries,
         timeout => $terraform_timeout);
 
+    die('Because I feel like it');
     # disconnect the console
     disconnect_target_from_serial();
 
