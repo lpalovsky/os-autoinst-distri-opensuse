@@ -85,6 +85,8 @@ our @EXPORT = qw(
   generate_lun_list
   show_cluster_parameter
   set_cluster_parameter
+  get_crm_failcount
+  crm_resources_by_class
 );
 
 =head1 SYNOPSIS
@@ -1516,6 +1518,65 @@ sub show_cluster_parameter {
     }
     my $cmd = join(' ', 'crm', 'resource', 'param', $args{resource}, 'show', $args{parameter});
     return script_output($cmd);
+}
+
+=head2 get_crm_failcount
+
+    get_crm_failcount(crm_resource=>'Totoro');
+
+Returns failcount number for specified resource.
+
+=over
+
+=item * B<crm_resource>: Resource name
+
+=item * B<assert_result>: Make test fail instead of returning value. Default: 'false'
+
+=back
+
+=cut
+
+sub get_crm_failcount {
+    my (%args) = @_;
+    croak 'Missing mandatory argument "$args{resource}"' unless $args{crm_resource};
+    my $cmd = join(' ', 'crm_failcount', '--query', "--resource=$args{crm_resource}");
+    my %result = map { my ($key, $value) = split(/=/, $_); $key => $value } split(/ +/, script_output($cmd));
+    die "Cluster resource '$args{crm_resource}' has positive fail count value: '$result{value}'"
+        if $result{value} != '0' && $args{assert_result};
+
+    return $result{value};
+}
+
+=head2 crm_resources_by_class
+
+    crm_resources_by_class();
+
+Returns resource name ARRAYREF filtered by class.
+Refer to CRM help pages for details: C<crm configure show --help> and C<crm ra classes>
+
+=over
+
+=item * B<primitive_class>: CRM resource class name. Example: 'stonith:external/sbd', 'IPaddr2'
+
+=back
+
+=cut
+
+sub crm_resources_by_class {
+    my (%args) = @_;
+    croak 'Missing mandatory argument: "$args{primitive_class}"' unless $args{primitive_class};
+    my @result;
+    # Filter only 'primitive' line
+    foreach (split("\n", script_output("crm configure show related:$args{primitive_class} | grep primitive"))) {
+        # split primitive line "primitive <name> <class>"
+        my @aux = split(/\s+/, $_);
+        if ($aux[2] and $aux[2] eq $args{primitive_class}) {
+            # additional check if returned resource exists for some bogus value
+            assert_script_run("crm resource status $aux[1]");
+            push @result, $aux[1];
+        }
+    }
+    return \@result;
 }
 
 1;

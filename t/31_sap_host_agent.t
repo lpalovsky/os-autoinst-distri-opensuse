@@ -62,4 +62,15 @@ subtest '[parse_instance_name] Exceptions' => sub {
     dies_ok { parse_instance_name('POO0.') } 'Instance name contains any non-word characters';
 };
 
+subtest '[saphostctrl_list_instances] Exceptions' => sub {
+    my $mock = Test::MockModule->new('sles4sap::sap_host_agent', no_auto => 1);
+    my $cmd_out = ' Inst Info : QES - 03 - qesapp01l7f2 - 753, patch 801, changelist 2074596
+ Inst Info : QES - 01 - qesscs01l7f2 - 753, patch 801, changelist 2074596';
+    $mock->redefine(script_output => sub { return $cmd_out; });
+    use Data::Dumper;
+    print "Instances:" . Dumper(saphostctrl_list_instances());
+
+
+};
+
 done_testing;
