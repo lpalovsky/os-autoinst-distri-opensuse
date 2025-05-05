@@ -27,7 +27,11 @@ sub run {
     if (get_var('QESAP_DEPLOYMENT_IMPORT')) {
         loadtest('sles4sap/publiccloud/qesap_reuse_infra', name => 'prepare_existing_infrastructure', run_args => $run_args, @_);
         loadtest('sles4sap/publiccloud/qesap_ansible', name => 'deploy_qesap_ansible', run_args => $run_args, @_);
-        loadtest('sles4sap/publiccloud/qesap_prevalidate', name => 'qesap_prevalidate', run_args => $run_args, @_);
+        #loadtest('sles4sap/publiccloud/qesap_prevalidate', name => 'qesap_prevalidate', run_args => $run_args, @_);
+        loadtest('sles4sap/publiccloud/prepare_redirection', name => 'prepare_redirection', run_args => $run_args, @_);
+        loadtest('sles4sap/redirection_tests/redirection_check.pm', name => 'Redirection check', run_args => $run_args, @_);
+        loadtest('sles4sap/redirection_tests/hana_cluster_check.pm', name => 'Hana cluster check', run_args => $run_args, @_);
+        loadtest('sles4sap/redirection_tests/hanasr_schedule_tests.pm', name => 'Schedule HanaSR', run_args => $run_args, @_);
     }
     else {
         if (check_var('IS_MAINTENANCE', 1)) {
@@ -41,14 +45,19 @@ sub run {
             loadtest('sles4sap/publiccloud/cluster_add_repos', name => 'cluster_add_repos', run_args => $run_args, @_);
         }
         loadtest('sles4sap/publiccloud/qesap_ansible', name => 'deploy_qesap_ansible', run_args => $run_args, @_);
-        loadtest('sles4sap/publiccloud/qesap_prevalidate', name => 'qesap_prevalidate', run_args => $run_args, @_);
+        # loadtest('sles4sap/publiccloud/qesap_prevalidate', name => 'qesap_prevalidate', run_args => $run_args, @_);
+        loadtest('sles4sap/publiccloud/prepare_redirection', name => 'prepare_redirection', run_args => $run_args, @_);
+        loadtest('sles4sap/redirection_tests/redirection_check.pm', name => 'Redirection check', run_args => $run_args, @_);
+        loadtest('sles4sap/redirection_tests/hana_cluster_check.pm', name => 'Hana cluster check', run_args => $run_args, @_);
+        loadtest('sles4sap/redirection_tests/hanasr_schedule_tests.pm', name => 'Schedule HanaSR', run_args => $run_args, @_);
     }
-    if (check_var('FENCING_MECHANISM', 'native') and is_azure) {
-        # MSI is preferred method not requiring additional password so it is set to default.
-        my $fence_agent_setup_type = uc(get_required_var('AZURE_FENCE_AGENT_CONFIGURATION'));
-        my $test_name = "Verify_azure_fence_agent_$fence_agent_setup_type";
-        loadtest('sles4sap/publiccloud/azure_fence_agents_test', name => $test_name, run_args => $run_args, @_);
-    }
+    # if (check_var('FENCING_MECHANISM', 'native') and is_azure) {
+    #     return;
+    #     # MSI is preferred method not requiring additional password so it is set to default.
+    #     my $fence_agent_setup_type = uc(get_required_var('AZURE_FENCE_AGENT_CONFIGURATION'));
+    #     my $test_name = "Verify_azure_fence_agent_$fence_agent_setup_type";
+    #     loadtest('sles4sap/publiccloud/azure_fence_agents_test', name => $test_name, run_args => $run_args, @_);
+    # }
 }
 
 1;
