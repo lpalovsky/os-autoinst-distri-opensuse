@@ -23,7 +23,7 @@ sub run {
     select_serial_terminal;
     my $env_code = get_required_var('SDAF_ENV_CODE');
     my $sdaf_region_code = convert_region_to_short(get_required_var('PUBLIC_CLOUD_REGION'));
-    my $sap_sid = get_required_var('SAP_SID');
+    my $sap_sid = get_required_var('SAP_SID');\
     my $workload_vnet_code = get_workload_vnet_code();
 
     my $jump_host_user = get_required_var('REDIRECT_DESTINATION_USER');
