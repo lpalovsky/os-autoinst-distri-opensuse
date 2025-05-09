@@ -47,7 +47,13 @@ sub run {
     # Define test scenarios
     my %scenarios = (
         'Kill_sapinstance_ASCS' => {
-            description => 'Test kills SAP instance ASCS process using "kill -9" command. Process must be restarted by cluster on original node without failover',
+            description => 'Test kills SAP instance ASCS process using "kill -9" command.',
+            connect_ip => $redirection_data{$ascs_location}{ip_address},
+            connect_user => $redirection_data{$ascs_location}{ssh_user},
+            crm_resource_name => $ascs_resource
+        },
+        'Recover_sapinstance_ASCS' => {
+            description => 'ASCS resource will be moved to original place. Sapinstance process will be killed triggering takeover.',
             connect_ip => $redirection_data{$ascs_location}{ip_address},
             connect_user => $redirection_data{$ascs_location}{ssh_user},
             crm_resource_name => $ascs_resource
@@ -60,9 +66,20 @@ sub run {
         }
     );
 
+    # Change test description according to test variant
+    $scenarios{Kill_sapinstance_ASCS}{description} .= get_var('ASCS_FORCE_TAKEOVER') ?
+        'Takeover must take place and resource will be moved to another node.':
+        'Process must be restarted by cluster on original node without failover.';
+
+
     loadtest('sles4sap/redirection_tests/ensa2_kill_sapinstance',
         name => 'Kill_sapinstance_ASCS',
         run_args => $run_args, @_);
+
+    # If takeover should take place, load recovery test to move resources to original nodes.
+    loadtest('sles4sap/redirection_tests/ensa2_kill_sapinstance',
+        name => 'Recover_sapinstance_ASCS',
+        run_args => $run_args, @_) if  get_var('ASCS_FORCE_TAKEOVER');
 
     loadtest('sles4sap/redirection_tests/ensa2_kill_sapinstance',
         name => 'Kill_sapinstance_ERS',

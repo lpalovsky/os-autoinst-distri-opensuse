@@ -62,6 +62,7 @@ sub run {
     my @instances_data = @{saphostctrl_list_instances(as_root => 'yes', running => 'yes')};
     my $instance_id = $instances_data[0]->{instance_id};
     my $instance_type = get_instance_type(local_instance_id => $instance_id);
+    my $forced_takeover = (get_var('ASCS_FORCE_TAKEOVER') && $instance_type eq 'ASCS') ? '1' : undef;
 
     # Show status
     sap_show_status_info(cluster => 1, netweaver => 1, instance_id => $instance_id);
@@ -72,8 +73,15 @@ sub run {
     wait_until_resources_started();
     wait_for_idle_cluster();
 
-    # Remove meta-argument 'migration-threshold' for cluster to try restarting sapinstance process first.
-    crm_resource_meta_set(resource => $resource_name, meta_argument => 'migration-threshold');
+    # Store original 'migration-threshold' to restore it at the end of the test
+    my $migration_threshold_original_value =
+        crm_resource_meta_show(resource => $resource_name, meta_argument => 'migration-threshold');
+    #
+    my $migration_threshold = $forced_takeover ? '1' : undef;
+    crm_resource_meta_set(
+        resource => $resource_name,
+        meta_argument => 'migration-threshold',
+        argument_value => $migration_threshold);
 
     record_info('Cluster check', 'Checking state of cluster resources');
     check_cluster_state();
@@ -111,16 +119,30 @@ sub run {
     $fail_count = crm_wait_failcount(crm_resource => $resource_name);
     record_info("Fail count: $fail_count", "Fail count is $fail_count");
 
-    record_info('Res cleanup', 'Cleaning up resources using "crm resource cleanup"');
-    rsc_cleanup($resource_name);
     wait_until_resources_started();
+    rsc_cleanup($resource_name);
     wait_for_idle_cluster();
     record_info('Cluster check', 'Checking state of cluster resources');
     check_cluster_state();
 
-    # Resource must not be moved - compare current location with initial one.
-    die "Cluster resource '$resource_name' is not on the original node." if
-      (crm_resource_locate(crm_resource => $resource_name) ne $initial_res_location);
+    #
+    if ($forced_takeover) {
+        die "Cluser resource '$resource_name' was not moved to another node" if
+            crm_resource_locate(crm_resource => $resource_name) eq $initial_res_location;
+    }
+    else {
+        die "Cluster resource '$resource_name' is not on the original node." if
+            (crm_resource_locate(crm_resource => $resource_name) ne $initial_res_location);
+    }
+
+    # Restore 'migration-threshold' to original value
+    if (crm_resource_meta_show(resource => $resource_name, meta_argument => 'migration-threshold')
+        ne $migration_threshold_original_value) {
+        crm_resource_meta_set(
+            resource => $resource_name,
+            meta_argument => 'migration-threshold',
+            argument_value=>$migration_threshold_original_value);
+    }
 
     # Show status of local instances
     sap_show_status_info(cluster => 1, netweaver => 1, instance_id => $instances_data[0]->{instance_id});
