@@ -20,11 +20,11 @@ use strict;
 use warnings;
 use sles4sap::sap_deployment_automation_framework::deployment
   qw(serial_console_diag_banner az_login sdaf_deployment_reused);
-use sles4sap::sap_deployment_automation_framework::deployment_connector qw(get_deployer_ip no_cleanup_tag);
+use sles4sap::sap_deployment_automation_framework::deployment_connector qw(get_deployer_ip no_cleanup_tag find_deployment_id get_parent_ids);
 use sles4sap::sap_deployment_automation_framework::naming_conventions qw(generate_deployer_name);
 use sles4sap::azure_cli qw(az_disk_create);
 use serial_terminal qw(select_serial_terminal);
-use mmapi qw(get_current_job_id);
+use mmapi qw(get_current_job_id get_job_autoinst_vars get_children get_job_info);
 use testapi;
 
 sub test_flags {
@@ -36,6 +36,16 @@ sub run {
     return if sdaf_deployment_reused();
     select_serial_terminal();
     serial_console_diag_banner('Module sdaf_clone_deployer.pm : start');
+
+    record_info('ID', get_current_job_id());
+    use Data::Dumper;
+    record_info('INFO', Dumper(get_job_info(get_current_job_id)));
+    record_info('PARENTS', Dumper(get_parent_ids(get_current_job_id)));
+
+    # has parents - check parents parent
+    # parent has no parents, check
+
+    return;
 
     my $deployer_resource_group = get_required_var('SDAF_DEPLOYER_RESOURCE_GROUP');
     my $snapshot_source_disk = get_var('SDAF_DEPLOYER_SNAPSHOT', 'deployer_snapshot_latest');

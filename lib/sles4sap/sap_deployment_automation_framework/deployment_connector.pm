@@ -46,6 +46,7 @@ our @EXPORT = qw(
   destroy_deployer_vm
   destroy_orphaned_resources
   no_cleanup_tag
+  get_parent_ids
 );
 
 =head2 check_ssh_availability
@@ -239,6 +240,7 @@ sub find_deployment_id {
     }
 
     diag("Job IDs found", Dumper(@check_list));
+    record_info("Job IDs found", Dumper(@check_list));
     my @ids_found;
     for my $deployment_id (@check_list) {
         my $vm_name =
