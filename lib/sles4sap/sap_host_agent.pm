@@ -78,6 +78,7 @@ sub saphostctrl_list_instances {
         my @instance_data = split(/\s:\s|\s-\s/, $instance);
         push(@instances, {
                 sap_sid => $instance_data[1],
+                sidadm => lc($instance_data[1]) . 'adm',
                 instance_id => $instance_data[2],
                 hostname => $instance_data[3],
                 nw_release => $instance_data[4]

@@ -12,7 +12,7 @@ use testapi;
 use Carp qw(croak);
 use Exporter qw(import);
 use Regexp::Common qw(net);
-use serial_terminal qw(select_serial_terminal);
+use serial_terminal qw(select_serial_terminal select_user_serial_terminal);
 
 =head1 SYNOPSIS
 
@@ -29,7 +29,6 @@ B<USAGE:>
     - all test code is now transparently executed on SUT instead of worker VM
     - from OpenQA perspective SUT is the worker VM
 3. Disable console redirection from SUT host by calling function B<disconnect_target_from_serial>
-
 
 =cut
 
