@@ -36,6 +36,7 @@ schedule:
   - boot/boot_to_desktop
   - ha/wait_barriers
   - console/system_prepare
+  - sles4sap/debug_tools
   - console/consoletest_setup
   - console/check_os_release
   - console/hostname

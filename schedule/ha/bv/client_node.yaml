@@ -31,6 +31,7 @@ vars:
   # HDD_1: SLE-%VERSION%-%ARCH%-Build%BUILD%-HA-BV.qcow2
 schedule:
   - boot/boot_to_desktop
+  - sles4sap/debug_tools
   - console/system_prepare
   - console/consoletest_setup
   - console/hostname

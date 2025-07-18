@@ -32,6 +32,7 @@ schedule:
   - support_server/login
   - support_server/setup
   - ha/barrier_init
+  - sles4sap/debug_tools
   - support_server/wait_children
   - '{{create_hdd_tests}}'
 conditional_schedule:
