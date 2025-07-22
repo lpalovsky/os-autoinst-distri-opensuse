@@ -14,19 +14,21 @@ use version_utils qw(is_desktop_installed is_tumbleweed is_bootloader_grub2);
 
 sub run {
     my ($self) = @_;
-    my $timeout = (is_tumbleweed) ? 180 : 80;
-
-    $self->override_default_bootloader unless is_bootloader_grub2;
-
-    # we have some tests that waits for dvd boot menu timeout and boot from hdd
-    # - the timeout here must cover it
-    $self->wait_boot(bootloader_time => $timeout, textmode => !is_desktop_installed);
-
-    $self->restore_default_bootloader if is_bootloader_grub2 && $self->{bootloader_overriden};
+    #my $timeout = (is_tumbleweed) ? 180 : 80;
+    #
+    # $self->override_default_bootloader unless is_bootloader_grub2;
+    #
+    # # we have some tests that waits for dvd boot menu timeout and boot from hdd
+    # # - the timeout here must cover it
+    #$self->wait_boot(bootloader_time => $timeout, textmode => !is_desktop_installed);
+    #
+    # $self->restore_default_bootloader if is_bootloader_grub2 && $self->{bootloader_overriden};
 
     # the supportserver image can be different version than the currently tested system
     # so try to login without use of needles
-    select_serial_terminal;
+    sleep 30;
+    select_console 'root-console';
+    #select_serial_terminal;
 }
 
 sub override_default_bootloader {
