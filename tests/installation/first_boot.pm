@@ -18,11 +18,14 @@ use warnings;
 use base 'bootbasetest';
 use testapi;
 use x11utils 'turn_off_plasma_tooltips';
+use serial_terminal qw(select_serial_terminal);
 
 sub run {
     shift->wait_boot_past_bootloader;
     # This only works with generic-desktop. In the opensuse-welcome case,
     # the opensuse-welcome module will handle it instead.
+    select_serial_terminal;
+    record_info('ISCSI', script_output('cat /etc/iscsi/initiatorname.iscsi'));
     turn_off_plasma_tooltips if match_has_tag('generic-desktop');
 }
 

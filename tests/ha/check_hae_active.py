@@ -65,6 +65,7 @@ def check_ha_registered(self):
 def run(self):
     perl.serial_terminal.select_serial_terminal()
 
+    record_info("ISCSI", script_output("cat /etc/iscsi/initiatorname.iscsi"))
     self.check_suseconnect()
     self.check_product_registration()
     self.check_ha_registered()
@@ -74,6 +75,7 @@ def run(self):
     record_info("SCC Extensions", script_output("SUSEConnect --list-extensions"))
 
     record_info("ha_sles", "Installing 'ha_sles' pattern")
+    record_info("ISCSI", script_output("cat /etc/iscsi/initiatorname.iscsi"))
     perl.utils.zypper_call("in -t pattern ha_sles")
 
 def test_flags(self):

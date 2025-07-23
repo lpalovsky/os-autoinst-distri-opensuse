@@ -41,6 +41,7 @@ sub run {
 
     # This code checks if the environment is Hyper-V 2016 with UEFI. If true,
     # it adds a new VM network adapter connected to a virtual switch and logs a known UEFI boot issue.
+    record_info('ISCSI', script_output('cat /etc/iscsi/initiatorname.iscsi'));
     if (check_var('HYPERV_VERSION', '2016') && is_uefi_boot) {
         my $virsh_instance = get_required_var("VIRSH_INSTANCE");
         my $hyperv_switch_name = get_var('HYPERV_VIRTUAL_SWITCH', 'ExternalVirtualSwitch');
@@ -121,10 +122,12 @@ sub run {
         modify_kernel_multiversion("enable");
     }
 
+    record_info('ISCSI', script_output('cat /etc/iscsi/initiatorname.iscsi'));
     assert_script_run 'rpm -q systemd-coredump || zypper -n in systemd-coredump || true', timeout => 200 if get_var('COLLECT_COREDUMPS');
 
     # stop and disable PackageKit
     quit_packagekit;
+    record_info('ISCSI', script_output('cat /etc/iscsi/initiatorname.iscsi'));
 }
 
 sub test_flags {
