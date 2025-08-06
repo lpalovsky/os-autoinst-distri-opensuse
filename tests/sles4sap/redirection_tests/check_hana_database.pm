@@ -17,7 +17,7 @@ use sles4sap::console_redirection::redirection_data_tools;
 use hacluster qw(wait_for_idle_cluster check_cluster_state);
 use sles4sap::database_hana qw(hdb_info);
 use sles4sap::sap_host_agent qw(saphostctrl_list_instances);
-use hacluster qw($crm_mon_cmd);
+use hacluster qw($crm_mon_cmd list_configured_sbd);
 
 =head1 SYNOPSIS
 
@@ -45,6 +45,8 @@ sub run {
 
         connect_target_to_serial(destination_ip => $ip_addr, ssh_user => $user, switch_root => 'yes');
         wait_for_idle_cluster();
+        # script_output returns empty string if resource does not exist
+        my $sbd_devices = list_configured_sbd();
 
         my $instance_data = saphostctrl_list_instances(as_root => 'yes', running => 'yes');
 
@@ -53,6 +55,14 @@ sub run {
         $instance_results{'System Replication'} = script_output('SAPHanaSR-showAttr', quiet => 1);
         $instance_results{'CRM status'} = script_output($crm_mon_cmd, quiet => 1);
         $instance_results{'HDB info'} = hdb_info(switch_user => $instance_data->[0]{sidadm}, quiet => 'true');
+
+        if ($sbd_devices) {
+            $instance_results{'SBD devices'} = join("\n", @{$sbd_devices});
+            #$instance_results{'SBD slots'} = script_output();
+            #$instance_results{'SBD dump'} = script_output();
+
+        }
+
         $results{$host} = \%instance_results;
 
         check_cluster_state();

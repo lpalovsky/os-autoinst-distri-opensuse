@@ -804,4 +804,12 @@ EOF
     is_deeply(\@sbd_conf, $expect_value, 'Parse crm sbd configure show disk_metadata successfully');
 };
 
+subtest '[list_configured_sbd] ' => sub {
+    my $hacluster = Test::MockModule->new('hacluster', no_auto => 1);
+    my $mock_out = 'SBD_DEVICE=/dev/disk/by-id/scsi-1;/dev/disk/by-id/scsi-2;/dev/disk/by-id/scsi-3';
+    $hacluster->redefine(script_output => sub { return $mock_out; });
+    my @sbd_devices = @{ list_configured_sbd() };
+    is list_configured_sbd(), '/dev/disk/by-id/scsi-36001405139d726b3e1f42de947058940', 'Return';
+};
+
 done_testing;

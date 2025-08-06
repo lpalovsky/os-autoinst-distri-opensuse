@@ -61,6 +61,8 @@ sub run {
             return_output => 'yes');
 
         $results{$host} = \%instance_results;
+
+
         check_cluster_state();
         disconnect_target_from_serial();
     }

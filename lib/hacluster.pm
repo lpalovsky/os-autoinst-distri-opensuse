@@ -94,6 +94,7 @@ our @EXPORT = qw(
   crm_list_options
   get_sbd_devices
   parse_sbd_metadata
+  list_configured_sbd
 );
 
 =head1 SYNOPSIS
@@ -1916,7 +1917,7 @@ UUID                : xxx
 Number of slots     : 255
 Sector size         : 512
 Timeout (watchdog)  : 5
-Timeout (allocate)  : 10 
+Timeout (allocate)  : 10
 Timeout (loop)      : 2
 Timeout (msgwait)   : 5
 ==Header on disk /dev/disk/by-path/xxxxxxx is dumped
@@ -1980,6 +1981,25 @@ sub parse_sbd_metadata {
         }
     }
     return @val;
+}
+
+=head2 list_configured_sbd
+
+    list_configured_sbd();
+
+Returns list of SBD devices defined in `/etc/sysconfig/sbd`.
+
+=cut
+
+sub list_configured_sbd {
+    my (%args) = @_;
+    my $sbd_devices = script_output('grep -E ^SBD_DEVICE /etc/sysconfig/sbd');
+    $sbd_devices =~ s/SBD_DEVICE=//;
+    my @sbd_devices = split(';', $sbd_devices);
+    use Data::Dumper;
+    print("\nSBD DEVS:\n}" . Dumper(\@sbd_devices));
+
+    return \@sbd_devices;
 }
 
 1;
