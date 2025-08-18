@@ -134,4 +134,14 @@ another not relevant line \
 
 };
 
+subtest '[test]' => sub {
+    use NetAddr::IP;
+    my $ip_gal = new NetAddr::IP 'Galileoo';
+    my $ip_normal = new NetAddr::IP '192.168.1.1';
+
+    print("IP galileo: " . $ip_gal->addr());
+    print("IP normal one: " . $ip_normal->addr());
+    dies_ok { new NetAddr::IP 'Galileoo' } 'Bad one';
+};
+
 done_testing;
