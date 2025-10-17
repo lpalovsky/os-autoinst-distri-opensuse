@@ -1,0 +1,46 @@
+---
+# /*---------------------------------------------------------------------------8
+# |                                                                            |
+# |                  Run commands on all remote hosts                          |
+# |                                                                            |
+# +------------------------------------4--------------------------------------*/
+
+- hosts: "{{ sap_sid | upper }}_DB  :
+    {{ sap_sid | upper }}_SCS :
+    {{ sap_sid | upper }}_ERS :
+    {{ sap_sid | upper }}_PAS :
+    {{ sap_sid | upper }}_APP :
+    {{ sap_sid | upper }}_WEB"
+
+  name:                                "Examples on how to run commands on remote hosts"
+  gather_facts:                        true
+  tasks:
+
+    - name:                            "Calculate information about the OS distribution"
+      ansible.builtin.set_fact:
+        distro_family:                 "{{ ansible_os_family | upper }}"
+        distribution_id:               "{{ ansible_distribution | lower ~ ansible_distribution_major_version }}"
+        distribution_full_id:          "{{ ansible_distribution | lower ~ ansible_distribution_version }}"
+
+    - name:                            "Show information"
+      ansible.builtin.debug:
+        msg:
+          - "Distro family:        {{ distro_family }}"
+          - "Distribution id:      {{ distribution_id }}"
+          - "Distribution full id: {{ distribution_full_id }}"
+
+    - name:                            "Show how to run a command on all remote host"
+      ansible.builtin.command:         "whoami"
+      register:                        whoami_results
+
+    - name:                            "Show results"
+      ansible.builtin.debug:
+        var:                           whoami_results
+        verbosity:                     0
+
+    - name:                            "Show how to run a command on just the 'SCS' and 'ERS' hosts"
+      ansible.builtin.command:         "whoami"
+      register:                        whoami_results
+      when:
+        - "'scs' in supported_tiers or 'ers' in supported_tiers "
+...
