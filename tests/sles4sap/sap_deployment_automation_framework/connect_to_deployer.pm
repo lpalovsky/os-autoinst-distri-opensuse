@@ -13,6 +13,7 @@ use sles4sap::sap_deployment_automation_framework::deployment_connector
   qw(get_deployer_vm_name get_deployer_ip find_deployment_id);
 use sles4sap::sap_deployment_automation_framework::naming_conventions qw($deployer_private_key_path);
 use serial_terminal qw(select_serial_terminal);
+use utils qw(zypper_call);
 
 sub test_flags {
     return {fatal => 1};
@@ -20,6 +21,7 @@ sub test_flags {
 sub run {
     select_serial_terminal();
     serial_console_diag_banner('Module sdaf_redirect_console_to_deployer.pm : start');
+    zypper_call('in -y netcat-openbsd');
     az_login();
 
     my $deployer_vm_name = get_deployer_vm_name(deployment_id => find_deployment_id());

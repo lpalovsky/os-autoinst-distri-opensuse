@@ -5,7 +5,8 @@ description: |
 vars:
   TEST_CONTEXT: 'OpenQA::Test::RunArgs'
 schedule:
-  - boot/boot_to_desktop
+  - installation/first_boot
+  - console/suseconnect_scc
   - sles4sap/sap_deployment_automation_framework/create_deployer_vm
   - sles4sap/sap_deployment_automation_framework/connect_to_deployer
   - sles4sap/sap_deployment_automation_framework/configure_deployer
