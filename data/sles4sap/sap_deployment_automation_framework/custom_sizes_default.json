@@ -25,7 +25,7 @@
         {
           "name": "log",
           "count": 1,
-          "disk_type": "Premium_V2",
+          "disk_type": "PremiumV2_LRS",
           "size_gb": 16,
           "caching": "None",
           "write_accelerator": false,
