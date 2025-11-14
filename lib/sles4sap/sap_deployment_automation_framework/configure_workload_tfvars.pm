@@ -333,7 +333,7 @@ sub define_subnets {
     croak 'Missing mandatory argument $args{network_data}' unless $args{network_data};
     my %result = (
         header => q|###  Subnet definitions ###|,
-        network_address_space => qq|"$args{network_data}->{network_address_space}"|,
+        network_address_space => qq|[\"$args{network_data}->{network_address_space}\"]|,
         iscsi_subnet_address_prefix => qq|"$args{network_data}->{iscsi_subnet_address_prefix}"|,
         web_subnet_address_prefix => qq|"$args{network_data}->{web_subnet_address_prefix}"|,
         admin_subnet_address_prefix => qq|"$args{network_data}->{admin_subnet_address_prefix}"|,
