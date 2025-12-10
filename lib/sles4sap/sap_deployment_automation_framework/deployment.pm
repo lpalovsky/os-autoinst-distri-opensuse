@@ -23,17 +23,7 @@ use Scalar::Util 'looks_like_number';
 use Mojo::JSON qw(decode_json);
 use publiccloud::utils qw(get_credentials);
 use sles4sap::azure_cli;
-use sles4sap::sap_deployment_automation_framework::naming_conventions qw(
-  homedir
-  deployment_dir
-  log_dir
-  sdaf_scripts_dir
-  env_variable_file
-  get_tfvars_path
-  generate_resource_group_name
-  convert_region_to_short
-  get_workload_vnet_code
-);
+use sles4sap::sap_deployment_automation_framework::naming_conventions;
 
 our @EXPORT = qw(
   $output_log_file
@@ -865,7 +855,9 @@ If undefined, it will use standard output without adding any B<-v> flag. See fun
 
 =item * B<timeout>: Timeout for executing playbook. Passed into asset_script_run. Default: 1800s
 
-=item * B<$verbosity_level>: Change default verbosity value by either anything equal to 'true' or int between 1-6. Default: false
+=item * B<verbosity_level>: Change default verbosity value by either anything equal to 'true' or int between 1-6. Default: false
+
+=item * B<additional_args>: Additional arguments in a form of B<HASHREF> to pass into commandline as a key-value pair.
 
 =back
 =cut
@@ -878,6 +870,8 @@ sub sdaf_execute_playbook {
 
     croak 'Missing mandatory argument "playbook_filename".' unless $args{playbook_filename};
     croak 'Missing mandatory argument "sdaf_config_root_dir".' unless $args{sdaf_config_root_dir};
+    croak 'Additional arguments must be defined as a HASHREF' if
+      defined($args{additional_args}) && ref($args{additional_args}) eq 'HASHREF';
 
     my $playbook_options = join(' ',
         sdaf_ansible_verbosity_level($args{verbosity_level}),    # verbosity controlled by OpenQA parameter
@@ -889,7 +883,7 @@ sub sdaf_execute_playbook {
     );
 
     $output_log_file = log_dir() . "/$args{playbook_filename}" =~ s/.yaml|.yml/.txt/r;
-    my $playbook_file = join('/', deployment_dir(), 'sap-automation', 'deploy', 'ansible', $args{playbook_filename});
+    my $playbook_file = playbook_dir() . "/$args{playbook_filename}";
     my $playbook_cmd = join(' ', 'ansible-playbook', $playbook_options, $playbook_file);
 
     record_info('Playbook run', "Executing playbook: $playbook_file\nExecuted command:\n$playbook_cmd");
