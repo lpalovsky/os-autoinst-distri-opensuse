@@ -92,21 +92,6 @@ sub run {
         $sles4sap::sap_deployment_automation_framework::basetest::serial_regexp_playbook = 1;
         sdaf_execute_playbook(%{$playbook_options}, sdaf_config_root_dir => $sdaf_config_root_dir);
         $sles4sap::sap_deployment_automation_framework::basetest::serial_regexp_playbook = 0;
-
-        # tasks needed to be run after playbook 'pb_get-sshkey.yaml'
-        if ($playbook_options->{playbook_filename} =~ /pb_get-sshkey/) {
-            # Check if SSH key was created by playbook
-            record_info('File check', "Check if SSH key '$sut_private_key_path' was created by SDAF");
-            assert_script_run("test -f $sut_private_key_path");
-
-            # BYOS image registration must happen before executing any other playbooks
-            sdaf_register_byos(
-                sap_sid => $sap_sid,
-                sdaf_config_root_dir => $sdaf_config_root_dir,
-                scc_reg_code => get_required_var('SCC_REGCODE_SLES4SAP'))
-              if is_byos() || get_var('PUBLIC_CLOUD_FORCE_REGISTRATION');
-        }
-
     }
     disconnect_target_from_serial();
     serial_console_diag_banner('Module sdaf_deploy_hanasr.pm : stop');
