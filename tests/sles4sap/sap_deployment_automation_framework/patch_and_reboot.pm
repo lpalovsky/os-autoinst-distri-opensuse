@@ -15,8 +15,9 @@ QE-SAP <qe-sap@suse.de>
 
 =head1 DESCRIPTION
 
-Test module sets up environment for robot testing framework and executes test suite. Test suite patches SUTs with
-maintenance updates.
+Test module sets up environment for robot testing framework and executes test suite residing in 'HLQR' project.
+Project site: C<https://gitlab.suse.de/qa-css/hlqr>
+Test suite patches SUTs with maintenance updates.
 
 B<The key tasks performed by this module include:>
 
@@ -26,7 +27,7 @@ B<The key tasks performed by this module include:>
 
 =item * Install robot framework, pabot and other required packages.
 
-=item * Download robot script into deployer VM
+=item * Upload robot framework based 'HLQR' project into deployer VM
 
 =item * Fetch private key required for accessing SUTs
 
@@ -48,6 +49,12 @@ B<The key tasks performed by this module include:>
 
 =item * B<REPO_MIRROR_HOST> : IBSm repository hostname
 
+=item * B<HLQR_NAME> : Repository project name. Default: hlqr
+
+=item * B<HLQR_BRANCH> : Repository branch. Default: main
+
+=item * B<HLQR_GIT_REPO> : Repository url. Default: main
+
 =back
 =cut
 
@@ -57,6 +64,7 @@ use testapi;
 use serial_terminal qw(select_serial_terminal);
 use qam qw(get_test_repos);
 use utils qw(write_sut_file);
+use Utils::Git qw(git_clone);
 use sles4sap::azure_cli;
 use sles4sap::sap_deployment_automation_framework::naming_conventions;
 use sles4sap::console_redirection;
@@ -76,30 +84,33 @@ sub run {
         record_info('MAINTENANCE OFF', 'openQA setting "IS_MAINTENANCE" is disabled, skipping IBSm setup');
         return;
     }
+    my $project_name = get_var('HLQR_NAME', 'hlqr');
+    my $project_branch = get_var('HLQR_BRANCH', 'main');
+    my $project_root_dir = "/tmp/$project_name";
+    my $log_dir = "$project_root_dir/logs";
+    my $test_dir = "$project_root_dir/tests";
+    my $sut_ssh_key_path = '/home/azureadm/.ssh/sut_id_rsa';
+
+    git_clone(get_required_var('HLQR_GIT_REPO'),
+        branch => $project_branch,
+        output_log_file => '/tmp/git_clone_hlqr.txt');
+    assert_script_run("mkdir -p $log_dir");
+    record_info('Project files', script_output("ls $project_root_dir"));
+    # Rsync the project to Deployer VM
+    assert_script_run(join(' ', 'rsync -avz',
+        "/tmp/$project_name",
+        get_required_var('REDIRECT_DESTINATION_USER') . '@' . get_required_var('REDIRECT_DESTINATION_IP') . ':/tmp/'));
+
     connect_target_to_serial;
     my $redirection_data = sles4sap::console_redirection::redirection_data_tools->new($run_args->{redirection_data});
     my %update_hosts = %{$redirection_data->get_sap_hosts};
-
-    my $root_dir = '/tmp/robot';
-    my $log_dir = "$root_dir/logs";
-    my $test_dir = "$root_dir/patch_and_reboot";
-    my $sut_ssh_key_path = '/home/azureadm/.ssh/sut_id_rsa';
-
-    # Ensure there is no log file and recreate dirs
-    assert_script_run("rm -Rf $log_dir $test_dir");
-    assert_script_run("mkdir -p $log_dir $test_dir");
 
     # Install pip and robot fw if needed.
     assert_script_run('sudo zypper in python3-pip') if script_run('pip -V');
     # This installs all robot requirements
     # Pabot is for executing test suites in parallel
-    assert_script_run('pip install --upgrade robotframework-sshlibrary robotframework-pabot');
+    assert_script_run('pip install --upgrade robotframework-sshlibrary robotframework-pabot==5.1.0');
 
-    my $cmd_robot_fetch = join(' ', 'curl', '-v', '-fL',
-        data_url("sles4sap/sap_deployment_automation_framework/robot_tests/patch_and_reboot.robot"),
-        '-o', "$test_dir/patch_and_reboot.robot"
-    );
-    assert_script_run($cmd_robot_fetch);
     # Path to robot binaries installed by pip
     assert_script_run('export PATH=$PATH:/home/azureadm/.local/bin');
 
