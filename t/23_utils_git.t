@@ -40,6 +40,10 @@ subtest '[git_clone] Test exceptions' => sub {
     $mock_git->noop(qw(record_info upload_logs));
 
     dies_ok { git_clone() } 'Croak with missing repository argument';
+
+    set_var('HLQR_GIT_REPO', 'https://gitlab.suse.de/lpalovsky/hlqr.git');
+    my ($project_name) = get_required_var('HLQR_GIT_REPO') =~ /\/([A-z0-9-_]+)(?:\.git)?$/;
+    print("REPO: $project_name");
 };
 
 done_testing;
