@@ -157,15 +157,19 @@ file_content
         '--name "Patch and reboot all hosts"',
         "--processes " . scalar(@arg_files),    # number of processes to run in parallel
         '--exitonfailure',    # if test inside test suite fails, execution is stopped
+        "--outputdir $log_dir",
         '--xunit xunit_result.xml',
         @arg_files,
         $test_dir
     );
-    assert_script_run("cd $log_dir");
+
+    assert_script_run("rm -Rf $log_dir/*");
+    assert_script_run("cd $test_dir");
     my $pabot_rc = script_run($pabot_cmd, timeout => 3600);
 
-    assert_script_run("tar -cvzf $log_dir/ibsm_patch_and_reboot.zip $log_dir/*");
-    upload_logs("$log_dir/ibsm_patch_and_reboot.zip");
+    assert_script_run("tar -cvzf $project_root_dir/ibsm_patch_and_reboot.zip $log_dir/*");
+    upload_logs("$project_root_dir/ibsm_patch_and_reboot.zip");
+
     # Robot logs - uploaded as log files
     my @robot_logs = split("\n", script_output("ls $log_dir | grep ssh_"));
     record_info('Log upload', "Uploading robot log files:\n" . join("\n", @robot_logs));
