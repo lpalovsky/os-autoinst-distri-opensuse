@@ -838,7 +838,7 @@ sub check_cluster_state {
         script_run $verify_cmd;
     }
     else {
-        if (is_sle('>16')) {
+        if (is_sle('>=15-SP7')) {
             # Need both retval and output, so use utils::cmd_run
             # Also redirect stderr to stdout to get the actual command output
             my ($ret, $out) = cmd_run("$verify_cmd 2>&1");
@@ -848,7 +848,7 @@ sub check_cluster_state {
                 foreach my $line (split(/\n/, $out)) {
                     record_soft_failure "jsc#PED-14519 - $verify_cmd shows deprecation warnings"
                       if ($line =~ /Support for legacy name .stonith.+is deprecated/);
-                    next if ($line =~ /^warning:/);
+                    next if ($line =~ /^[Ww]arning[s:]/);
                     next if ($line =~ /^Configuration may need attention/);
                     ++$errors;
                 }
