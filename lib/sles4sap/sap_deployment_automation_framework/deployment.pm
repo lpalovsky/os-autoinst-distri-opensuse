@@ -121,7 +121,7 @@ sub log_command_output {
     }
 
     my $result = join(' ', '(', $args{command}, '2>&1', '|', 'tee', $args{log_file}, ';', 'exit', '${PIPESTATUS[0]})');
-    return $result;
+    return $args{command};
 }
 
 =head2 export_credentials

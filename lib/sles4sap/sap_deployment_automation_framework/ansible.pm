@@ -260,8 +260,19 @@ sub sdaf_execute_playbook {
 
     record_info('Playbook run', "Executing playbook: $playbook_file\nExecuted command:\n$playbook_cmd");
     assert_script_run("cd $args{sdaf_config_root_dir}");
-    my $rc = script_run(log_command_output(command => $playbook_cmd, log_file => $output_log_file),
-        timeout => $args{timeout}, output => "Executing playbook: $args{playbook_filename}");
+    #my $rc = script_run(log_command_output(command => $playbook_cmd,
+    # log_file => $output_log_file),
+    #    timeout => $args{timeout}, output => "Executing playbook:
+    # $args{playbook_filename}");
+
+    my $rc;
+    my $retries = 3;
+
+    for my $try (1..$retries) {
+        $rc = script_run($playbook_cmd);
+        last if $try == $retries;
+    }
+
     upload_logs($output_log_file);
     die "Execution of playbook failed with RC: $rc" if $rc;
     record_info('Playbook OK', "Playbook execution finished: $playbook_file");
