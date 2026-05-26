@@ -786,7 +786,7 @@ sub resource_group_exists {
     my ($resource_group) = @_;
     croak 'Mandatory positional argument "$resource_group" not defined.' unless $resource_group;
 
-    my $cmd_out = script_output("az group exists -n $resource_group $SDAF_Azure_podman_flake_filter");
+    my $cmd_out = az_json_filter(az_cmd => "az group exists -n $resource_group");
     die "Command 'az group exists -n $resource_group' failed.\nCommand returned: $cmd_out" unless grep /false|true/, $cmd_out;
     return ($cmd_out eq 'true');
 }
