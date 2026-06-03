@@ -94,7 +94,7 @@ our @EXPORT = qw(
 
 # Workaround for bsc#1261229 - az-cli-cmd 'Launching flake' message breaks JSON output format
 our $SDAF_Azure_podman_flake_filter = (get_var('SDAF_GIT_AUTOMATION_BRANCH', '') =~ /feature\/sles16/)
-  ? "2> >(grep -Ev 'FutureWarning|Launching flake|self.' >&2)"
+  ? "%silent 2> >(grep -Ev 'FutureWarning|Launching flake|self.' >&2)"
   : '';
 
 =head2 az_version
