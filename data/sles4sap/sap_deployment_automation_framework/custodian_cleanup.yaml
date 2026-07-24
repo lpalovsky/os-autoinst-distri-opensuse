@@ -1,0 +1,224 @@
+---
+policies:
+  - name: SDAF-delete-deployer-vms
+    resource: azure.vm
+    comment: |
+      - Destroy deployer VM resources which are older than 12h (0.5 days)
+      - Destroy resources located in OpenQA-SDAF-<ENV>-DEPLOYER-<location> job groups
+      - Destroy only resources created by SDAF tests
+      - Tags `deployment_id` and `openqa_created_date` must be present
+      - Permanent job groups **MUST** be kept safe
+      - Resources tagged with `pcw_cleanup` are ignored
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      - type: value
+        key: tags.deployment_id
+        value: present
+      - type: value
+        key: tags.openqa_created_date
+        value: present
+      - type: value
+        key: "tags.openqa_created_date"
+        value_type: age
+        op: greater-than
+        value: 0.5
+      - type: value
+        key: name
+        op: regex
+        value: '^[0-9]+-OpenQA_Deployer_'
+    actions:
+      - type: delete
+
+  - name: SDAF-delete-deployer-nic
+    resource: azure.networkinterface
+    comment: |
+      - Destroy deployer VM NICs
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      - type: value
+        key: tags.deployment_id
+        value: present
+      - type: value
+        key: "tags.openqa_created_date"
+        value_type: age
+        op: greater-than
+        value: 0.5
+      - type: value
+        key: name
+        op: regex
+        value: '^[0-9]+-OpenQA_Deployer_'
+      - type: value
+        key: properties.virtualMachine
+        value: null
+    actions:
+      - type: delete
+
+  - name: SDAF-delete-deployer-disk
+    resource: azure.disk
+    comment: |
+      - Destroy deployer VM Disks
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      - type: value
+        key: tags.deployment_id
+        value: present
+      - type: value
+        key: "tags.openqa_created_date"
+        value_type: age
+        op: greater-than
+        value: 0.5
+      - type: value
+        key: name
+        op: regex
+        value: '^[0-9]+-OpenQA_Deployer_'
+      - type: value
+        key: managedBy
+        value: null
+    actions:
+      - type: delete
+  - name: SDAF-delete-deployer-pip
+    resource: azure.publicip
+    comment: |
+      - Destroy deployer VM Public IPs
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      - type: value
+        key: tags.deployment_id
+        value: present
+      - type: value
+        key: "tags.openqa_created_date"
+        value_type: age
+        op: greater-than
+        value: 0.5
+      - type: value
+        key: name
+        op: regex
+        value: '^[0-9]+-OpenQA_Deployer_'
+      - type: value
+        key: properties.ipConfiguration
+        value: null
+    actions:
+      - type: delete
+
+  - name: SDAF-delete-deployer-nsg
+    comment: |
+      - Destroy deployer VM Network security group
+    resource: azure.networksecuritygroup
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      - type: value
+        key: tags.deployment_id
+        value: present
+      - type: value
+        key: "tags.openqa_created_date"
+        value_type: age
+        op: greater-than
+        value: 0.5
+      - type: value
+        key: name
+        op: regex
+        value: '^[0-9]+-OpenQA_Deployer_'
+      - type: value
+        key: properties.networkInterfaces
+        value: empty
+    actions:
+      - type: delete
+
+  - name: SDAF-delete-old-sap_systems
+    resource: azure.resourcegroup
+    comment: |
+      - Destroy sap systems resource groups which are older than 12h (0.5 days).
+      - Tag `openqa_created_date` and `deployment_id` **must** be present on the
+        resource group.
+      - Consider only resources matching `SAP systems` type naming convention.
+      - Resources tagged with `pcw_cleanup` are ignored.
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      # Destroy only resources coming from OpenQA SDAF tests
+      - type: value
+        key: tags.deployment_id
+        value: present
+      # Destroy only resources having proper date in tags
+      - type: value
+        key: tags.openqa_created_date
+        value: present
+      - type: value
+        key: "tags.openqa_created_date"
+        value_type: age
+        op: greater-than
+        value: 0.5
+      - type: value
+        key: name
+        op: regex
+        value: '^SDAF-OpenQA-sap_system-[0-9]+$'
+    actions:
+      - type: delete
+
+  - name: SDAF-delete-old-workload_zones
+    resource: azure.resourcegroup
+    comment: |
+      - Destroy workload zone resource groups which are marked for cleanup with tag: `marked_for_cleanup`
+      - Consider only resources matching `Workload zone` type naming convention.
+      - Resources tagged with `pcw_cleanup` are ignored.
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      # Destroy only resources coming from OpenQA SDAF tests
+      - type: marked-for-op
+        tag: marked_for_cleanup
+        op: delete
+      - type: value
+        key: name
+        op: regex
+        value: '^SDAF-OpenQA-workload_zone-[0-9]+$'
+    actions:
+      - type: delete
+
+  - name: SDAF-mark-for-cleanup-workload_zones
+    resource: azure.resourcegroup
+    comment: |
+      - Workload zone can be deleted only after corresponding sap system
+      - This marks resource group for cleanup and removal will be delayed
+    filters:
+      - type: value
+        key: tags.pcw_ignore
+        value: absent
+      # Destroy only resources coming from OpenQA SDAF tests
+      - type: value
+        key: tags.deployment_id
+        value: present
+      # Destroy only resources having proper date in tags
+      - type: value
+        key: tags.openqa_created_date
+        value: present
+      - type: value
+        key: tags.marked_for_cleanup
+        value: absent
+      - type: value
+        key: "tags.openqa_created_date"
+        value_type: age
+        op: greater-than
+        value: 0.5
+      - type: value
+        key: name
+        op: regex
+        value: '^SDAF-OpenQA-workload_zone-[0-9]+$'
+    actions:
+      - type: mark-for-op
+        tag: marked_for_cleanup
+        op: delete
+        # Mark for cleanup after around 2H
+        days: 0.15

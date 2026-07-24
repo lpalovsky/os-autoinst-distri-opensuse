@@ -1,0 +1,8 @@
+---
+name: custodian_cleanup
+description: |
+  Execute orphaned resource cleanup using cloud custodian
+
+schedule:
+  - boot/boot_to_desktop
+  - sles4sap/sap_deployment_automation_framework/custodian_cleanup
