@@ -321,7 +321,8 @@ sub assign_defined_network {
         record_info('Expired files', "Following expired leases found:\n" . join("\n", @lease_files));
         return unless @lease_files;
         # Taking random file from the list decreases the chance of two tests spending time checking same file.
-        $lease_file = $lease_files[int(rand(@lease_files - 1))];
+        #$lease_file = $lease_files[int(rand(@lease_files - 1))];
+        $lease_file = '192.168.20.128';
         # Check if network resource associated with chosen lease file exists.
         if (deployer_peering_exists(addr_space => $lease_file . '/26', deployer_vnet_name => $args{deployer_vnet_name})) {
             $lease_file = 0;
