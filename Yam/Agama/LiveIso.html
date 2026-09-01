@@ -42,13 +42,13 @@
 
 <pre><code>_isoinfo_extract($member, $errmsg);</code></pre>
 
-<p>Extract <code>$member</code> from the ISO (<code>get_var(&#39;ISO&#39;)</code>) via <code>isoinfo</code> and return its content. Dies with <code>$errmsg</code> on failure.</p>
+<p>Extract <code>$member</code> from the ISO (<code>get_var(&#39;ISO&#39;)</code>) via <code>isoinfo</code> and return its content. Dies with <code>$errmsg</code> on failure. Returns an empty string, without dying, if <code>$member</code> is not present on the ISO (isoinfo exits 0 with no output in that case).</p>
 
 <h2 id="read_packages_json">_read_packages_json</h2>
 
 <pre><code>_read_packages_json();</code></pre>
 
-<p>Read <code>/LiveOS/.packages.json.gz</code> (a gzipped JSON array of <code>{name, version, ...}</code>) from the ISO, decompress it via the <code>gunzip</code> binary over a temp file (no shell pipe, deadlock-free) and return the decoded arrayref.</p>
+<p>Read <code>/LiveOS/.packages.json.gz</code> (a gzipped JSON array of <code>{name, version, ...}</code>) from the ISO, decompress it via the <code>gunzip</code> binary over a temp file (no shell pipe, deadlock-free) and return the decoded arrayref. Some media (e.g. the Online medium) don&#39;t ship this file at all; isoinfo then returns empty output rather than failing, so that case is treated as &quot;no package info available&quot; instead of a decompression error.</p>
 
 
 </body>
