@@ -745,7 +745,6 @@ sub prepare_sdaf_project {
         output_log_file => log_dir() . '/git_clone_templates.log');
 
     assert_script_run("cp -Rp sap-automation-samples/Terraform/WORKSPACES $deployment_dir/WORKSPACES");
-    assert_script_run("cp -Rp ~/Azure_SAP_Automated_Deployment/WORKSPACES/.sap_deployment_automation $deployment_dir/WORKSPACES");
     # Ensure correct directories are in place
     my %vnet_codes = (
         workload_zone => $workload_vnet_code,

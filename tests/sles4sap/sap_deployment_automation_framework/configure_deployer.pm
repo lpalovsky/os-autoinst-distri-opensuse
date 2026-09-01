@@ -68,6 +68,15 @@ sub run {
     assert_script_run('sudo /opt/ansible/venv/2.16/bin/python -m pip install passlib');
     record_soft_failure 'gh#34 - https://github.com/sdaf-suse/sap-automation/issues/34 - Install passlib';
 
+    # Disable Python warnings podman based azure cli
+    my $flake_config = '/usr/share/flakes/az.yaml';
+    # sed copies HOME variable line as template to keep yaml indentation intact
+    my $sed_pattern = 's/^(\s*)- "-e HOME=%HOME"$/&\n\1- "-e PYTHONWARNINGS=ignore::FutureWarning"/';
+    if (!script_run("test -f $flake_config")) {
+        record_info('AZ CLI conf', 'Disabling python warnings from podman based azure cli.');
+        assert_script_run("sed -i -E '$sed_pattern' $flake_config");
+    }
+
     my $subscription_id = az_login();
     set_common_sdaf_os_env(subscription_id => $subscription_id);
     prepare_sdaf_project();
